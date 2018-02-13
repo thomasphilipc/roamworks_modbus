@@ -28,10 +28,43 @@
 #define script_ver "v0.1.6"
 
 volatile int reboot=0;
+volatile int do_function=0;
+volatile int time_tracker=0;
+
+int guard(int r, char * err) 
+{
+if (r == -1) 
+    { 
+    perror(err); 
+    exit(1); 
+    } 
+return r;
+}
+
+
+
+void *connection_handler();
 
 void sigalrm_handler( int sig )
 {
-    reboot=1;
+    //reboot=1;
+    time_tracker++;
+
+    if (time_tracker%2==0)
+    {
+    do_function = 1;
+    }
+
+    if (time_tracker%3==0)
+    {
+     do_function = 2;
+    }
+
+    if (time_tracker%5==0)
+    {
+     do_function = 3;
+    }
+    printf("%d",time_tracker);
     alarm(5);
 }
 
@@ -150,6 +183,46 @@ printf("3. experiment timers and signals and alarms \n");
  
 }
 
+void * thread_func() 
+{
+
+  printf("reached the thread \n");
+  char str[100];
+    int listen_fd, comm_fd;
+ 
+    struct sockaddr_in servaddr;
+ 
+    listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+ 
+    bzero( &servaddr, sizeof(servaddr));
+ 
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+    servaddr.sin_port = htons(22000);
+ 
+    bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
+ 
+    listen(listen_fd, 10);
+ 
+    comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
+    
+    printf(" %d , %d \n ",comm_fd,listen_fd);
+ 
+    while(1)
+    {
+ 
+        bzero( str, 100);
+ 
+        read(comm_fd,str,100);
+ 
+        printf("Echoing back - %s",str);
+ 
+        write(comm_fd, str, strlen(str)+1);
+ 
+    }
+
+}
+
 
 void send_tcp_data(char data[])
 {
@@ -209,11 +282,17 @@ void send_tcp_data(char data[])
 
    
     ret = send(sockfd, this, strlen(this)+1,0);
-    printf (" %d is the return \n",ret);
-    ret = shutdown(sockfd, SHUT_WR);
-    printf (" %d is the return for shutdown \n",ret);
-    ret= close(sockfd);
-    printf (" %d is the return for close \n",ret);
+    if (ret == (strlen(this)+1))
+    {
+    printf ("Success ! Message sent\n");
+    
+//printf (" %d is the return \n",ret);
+  //  ret = shutdown(sockfd, SHUT_WR);
+   // printf (" %d is the return for shutdown \n",ret);
+   // ret= close(sockfd);
+    //printf (" %d is the return for close \n",ret);
+    }
+
 }
 
 
@@ -237,6 +316,8 @@ int main (int argc, char *argv[])
   int res,ret1;
   char this[1024];
   int data_length;
+  char buff[100];
+
 
 
 
@@ -255,14 +336,23 @@ int main (int argc, char *argv[])
     ready_device();
     
     poll_ioline_state();
+
+    //threading a open tcp read connection
+    pthread_t thread_id;
+    printf("Calling a thread");
+    int ret2 = pthread_create(&thread_id, NULL, thread_func, NULL);
+    if (ret2 != 0) 
+    { 
+        printf("Error from pthread: %d\n", ret2); 
+    }
     
 
 
     
 
     
-    alarm(60);  /* Request SIGALRM in 60 seconds */
-  printf("Alarm called and should fire in 10 seconds\n");
+    alarm(5);  /* Request SIGALRM in 5 seconds */
+  printf("Alarm called and should fire in 5 seconds\n");
 
 
 
@@ -272,20 +362,46 @@ int main (int argc, char *argv[])
     do
 {
     
-    printf("Waiting and running in the loop until reboot is set to true by a timer signal\n");
 
 
-    poll_modbus_data();
+    
+    time_t now = time (0);
+    strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
+    printf ("%s\n", buff);
+
+
+    //poll_modbus_data();
 
     snprintf(this, sizeof(this), "Following data is to to be send via tcp:  %d \n",(int)time(NULL));
     data_length = strlen(this);
     this[data_length] = '\0';
     
     
-    send_tcp_data(this);
+    //send_tcp_data(this);
 
-    // a sleep for 2 seconds
-    sleep(2);
+    // a sleep for 1 seconds
+    sleep(1);
+
+    switch(do_function){
+
+    case 1:
+            printf("I got hit by a 1 \n");
+            do_function=0;
+            break;
+
+    case 2:
+            printf("I got hit by a 2\n");
+            do_function=0;
+            break;
+
+    case 3:
+            printf("I got hit by a 3\n");
+            do_function=0;
+            break;
+    default:
+            printf("No Action Taken\n");
+}
+
 
 }
     while (!reboot);
