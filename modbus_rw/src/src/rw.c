@@ -55,17 +55,19 @@ void sigalrm_handler( int sig )
     do_function = 1;
     }
 
-    if (time_tracker%3==0)
+    if (time_tracker%5==0)
     {
      do_function = 2;
     }
 
-    if (time_tracker%5==0)
+    if (time_tracker%10==0)
     {
      do_function = 3;
     }
-    printf("%d",time_tracker);
-    alarm(5);
+
+    // remove below line as this is only for debug
+
+    alarm(30);
 }
 
 
@@ -78,7 +80,6 @@ int ret,i;
   char timestamp[26];
   //FILE *in;
   //FILE *grab;
-  char time[26];
   char* sql_buff;
   char* temp_buff;
 
@@ -96,7 +97,15 @@ char datatags[5][5];
     strcpy (datatags[3],"Tag4");
     strcpy (datatags[4],"Tag5");
 
+  // variables to prepare periodic information 
 
+  int fix=1,course=2,speed=3,navdist=4,alt=5,power=6,bat=7,in7=8,out=9,dop=10,satsused=11;
+  int REG0=0,REG1=1,REG2=2,REG3=3,REG4=4,REG5=5,REG6=6,REG7=7,REG8=8,REG9=9,REG10=10,REG11=11,REG12=12,REG13=13,REG14=14,REG15=15;
+  int REG16=16,REG17=17,REG18=18,REG19=19,REG20=20,REG21=21,REG22=22,REG23=23,REG24=24,REG25=25;
+  char sendtime[10]="",date[11]="",lat[]="dummylat",lon[]="dummylon";
+  char imei[14];
+    char  datatosend[1024];
+  char buff[100]; 
 
   // iterate through the above tags to obtain the value for each of them
     
@@ -105,41 +114,79 @@ char datatags[5][5];
     {
     printf ("Tag Name = %s", datatags[i]);
 
-      //int read_tag_latest_data_from_db(char *tagname,char *eqid,unsigned int polling_G_num,unsigned int upload_G_num,double value,char *timesatmp);  
-      //return -1:Error 
-      //return 0:success(valid data) 
-      //return 1:success(Invalid data)
+
       value = 0;
-      //ret = read_tag_all_data_from_db (datatags[i],"cpanel",1,1,"/tmp/abc");
+
       ret = read_tag_latest_data_from_db(datatags[i],"cpanel",1,1,&value,timestamp);  
 
-       // int get_loggerid(char *logger_id);  //return 0:valid  -1:Invalid or Error
-       // long int Database_used_size(); //return -1:Error  >=0:valid size
 
-       // int update_timestamp_for_tagname(char *tagname,char *eqid,unsigned int upload_G_num,char* temp_buff);  //return 0:success -1:Error
 
 
  if (ret == 0)
 	{
 	  printf ("Tag : %lf - %d @ %s \n", value, ret, timestamp);
-      // beforee this delete tags command you have to call  update timestamp command update_timestamp_for_tagname,
-      printf ("Attempting to update data\n");
-      ret1 = update_timestamp_for_tagname(datatags[i],"cpanel",1,temp_buff);  //return 0:success -1:Error
-       if (ret1 == 0)
-	    {
-            printf ("updated timestamp on database %s \n", temp_buff);
-            printf ("Attempting to delete from database\n");
-            ret = delete_tags_data_from_db ();
-            if (ret == 0)
-            {
-                printf ("Tags deleted from database \n");
-            }
-        }  
+
+     // printf ("Attempting to update data\n");
+     // ret1 = update_timestamp_for_tagname(datatags[i],"cpanel",1,temp_buff);  //return 0:success -1:Error
+     //  if (ret1 == 0)
+	  //  {
+       //     printf ("updated timestamp on database %s \n", temp_buff);
+        //    printf ("Attempting to delete from database\n");
+         //   ret = delete_tags_data_from_db ();
+          //  if (ret == 0)
+           // {
+            //    printf ("Tags deleted from database \n");
+            //}
+     //   }  
 	}
 else
     printf("Not sure what is wrong \n");
 
     }
+
+
+
+
+
+
+    ret = get_imei (imei, 15);
+    imei[strlen(imei)]='\0';
+
+
+    time_t t;
+    struct tm *tmp;
+
+    t = time(NULL);
+    tmp = localtime(&t);
+
+    strftime (buff, sizeof(buff), "%H:%M:%S", tmp);
+    snprintf(sendtime, sizeof(sendtime), "%s",buff);
+    sendtime[strlen(sendtime)] = '\0';
+    
+    strftime (buff, sizeof(buff), "%d-%m-%Y", tmp);
+    snprintf(date, sizeof(date), "%s",buff);
+    date[strlen(date)] = '\0';
+
+    ret = read_tag_latest_data_from_db("Tag1","cpanel",1,1,&value,timestamp); 
+    REG0=value;
+    ret = read_tag_latest_data_from_db("Tag2","cpanel",1,1,&value,timestamp); 
+    REG1=value;
+    ret = read_tag_latest_data_from_db("Tag3","cpanel",1,1,&value,timestamp); 
+    REG2=value;
+    ret = read_tag_latest_data_from_db("Tag4","cpanel",1,1,&value,timestamp); 
+    REG3=value;
+    ret = read_tag_latest_data_from_db("Tag5","cpanel",1,1,&value,timestamp); 
+    REG4=value;
+
+
+
+
+
+snprintf(datatosend, sizeof(datatosend), "CANP36,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",imei,sendtime,date,lat,lon,fix,course,speed,navdist,alt,power,bat,in7,out,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+datatosend[strlen(datatosend)] = '\0';
+printf("%s",datatosend);
+send_tcp_data(&datatosend);
+
 
 }
 
@@ -168,18 +215,31 @@ void ready_device()
 
  printf("The device has just rebooted \n");  
  int ret;
- char imei[20],logger_id[20];
+ char imei[14],logger_id[20];
 
  ret = get_loggerid(logger_id); 
 
- ret = get_imei (imei, 20);
+ ret = get_imei (imei, 15);
  printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s \n", script_ver, imei, logger_id);
  
+
+
+
 printf("This version contains the below \n");
 printf("1. Modularize the functionality \n");
 printf("2. Send data buffer over TCP \n");
 printf("3. experiment timers and signals and alarms \n");
- 
+
+
+char  datatosend[100];
+
+
+
+snprintf(datatosend, sizeof(datatosend), "&<MSG.Info.ServerLogin>\r<&IMEI=%s\r&<end>\r",imei);
+datatosend[strlen(datatosend)] = '\0';
+printf("%s",datatosend);
+send_tcp_data(&datatosend);
+
  
 }
 
@@ -227,7 +287,7 @@ void * thread_func()
 void send_tcp_data(char data[])
 {
 
-    printf("Entered section to send data\n");
+
     char buffer[BUFSIZ];
     char protoname[] = "tcp";
     struct protoent *protoent;
@@ -242,7 +302,7 @@ void send_tcp_data(char data[])
     struct sockaddr_in sockaddr_in;
     char *server_hostname = "80.227.131.54";
     unsigned short server_port = 6102; 
-    char this[1024];
+    char this[2048];
     strcpy(this,data);
     
 
@@ -280,7 +340,7 @@ void send_tcp_data(char data[])
          printf ("Socket creation failed \n");
     }
 
-   
+    printf("Sending data : %s",this);   
     ret = send(sockfd, this, strlen(this)+1,0);
     if (ret == (strlen(this)+1))
     {
@@ -292,6 +352,80 @@ void send_tcp_data(char data[])
    // ret= close(sockfd);
     //printf (" %d is the return for close \n",ret);
     }
+
+     if( recv(sockfd, this , 2000 , 0) < 0)
+    {
+        printf("recv failed");
+    }
+    printf("Recieved reply: %s",this);
+
+
+}
+
+void open_tcp_socket()
+{
+
+    char protoname[] = "tcp";
+    
+    int ret;
+
+    struct protoent *protoent;
+
+    in_addr_t in_addr;
+    in_addr_t server_addr;
+    int sockfd;
+
+    struct hostent *hostent;
+    /* This is the struct used by INet addresses. */
+    struct sockaddr_in sockaddr_in;
+    
+    char *server_hostname = "80.227.131.54";
+    unsigned short server_port = 6102; 
+
+
+    
+
+    /* Get socket. */
+    protoent = getprotobyname(protoname);
+
+    if (protoent == NULL) {
+        perror("getprotobyname");
+    }
+    sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
+    if (sockfd == -1) {
+        perror("socket");
+
+    }
+
+    /* Prepare sockaddr_in. */
+    hostent = gethostbyname(server_hostname);
+    if (hostent == NULL) {
+        fprintf(stderr, "error: gethostbyname(\"%s\")\n", server_hostname);
+        exit(EXIT_FAILURE);
+    }
+    in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
+    if (in_addr == (in_addr_t)-1) {
+        fprintf(stderr, "error: inet_addr(\"%s\")\n", *(hostent->h_addr_list));
+        exit(EXIT_FAILURE);
+    }
+    // Define ip and port for the server
+    sockaddr_in.sin_addr.s_addr = in_addr;
+    sockaddr_in.sin_family = AF_INET;
+    sockaddr_in.sin_port = htons(server_port);
+
+    /* Do the actual connection. */
+    if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
+         printf ("Socket creation failed \n");
+    }
+
+
+
+}
+
+void sent_sign_on()
+{
+
+
 
 }
 
@@ -307,7 +441,7 @@ int main (int argc, char *argv[])
 
   double size, lat, lon, alt;
 
-  char loggerid[15], timestamp[26], timestamp_full[300];
+  char timestamp[26];
   FILE *in;
   FILE *grab;
   char* sql_buff;
@@ -316,12 +450,10 @@ int main (int argc, char *argv[])
   int res,ret1;
   char this[1024];
   int data_length;
-  char buff[100];
+  char buff[100]; 
+  char imei[14];
 
 
-
-
-    
 
 
     struct sigaction sact;
@@ -332,10 +464,10 @@ int main (int argc, char *argv[])
     sact.sa_handler = sigalrm_handler;
     sigaction(SIGALRM, &sact, NULL);
     
-
+    //sends the login message
     ready_device();
     
-    poll_ioline_state();
+    //poll_ioline_state();
 
     //threading a open tcp read connection
     pthread_t thread_id;
@@ -351,7 +483,7 @@ int main (int argc, char *argv[])
     
 
     
-    alarm(5);  /* Request SIGALRM in 5 seconds */
+    alarm(30);  /* Request SIGALRM in 5 seconds */
   printf("Alarm called and should fire in 5 seconds\n");
 
 
@@ -364,7 +496,7 @@ int main (int argc, char *argv[])
     
 
 
-    
+    // buff here is to print the time on the console for debug purpose
     time_t now = time (0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
     printf ("%s\n", buff);
@@ -372,12 +504,13 @@ int main (int argc, char *argv[])
 
     //poll_modbus_data();
 
-    snprintf(this, sizeof(this), "Following data is to to be send via tcp:  %d \n",(int)time(NULL));
+    snprintf(this, sizeof(this), "Unix Time:  %d \n",(int)time(NULL));
     data_length = strlen(this);
     this[data_length] = '\0';
-    
-    
     //send_tcp_data(this);
+    
+    
+
 
     // a sleep for 1 seconds
     sleep(1);
@@ -385,17 +518,20 @@ int main (int argc, char *argv[])
     switch(do_function){
 
     case 1:
-            printf("I got hit by a 1 \n");
+            printf("I got hit by a 1 and will poll the modbus now\n");
+            poll_modbus_data();
             do_function=0;
             break;
 
     case 2:
-            printf("I got hit by a 2\n");
+            printf("I got hit by a 2 and will send the data on tcp now\n");
+            send_tcp_data(this);
             do_function=0;
             break;
 
     case 3:
-            printf("I got hit by a 3\n");
+            printf("I got hit by a 3 and will check my IO lines\n");
+            poll_ioline_state();    
             do_function=0;
             break;
     default:
