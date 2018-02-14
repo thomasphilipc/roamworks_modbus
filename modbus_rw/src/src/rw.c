@@ -4,18 +4,18 @@
 
 #include <unistd.h>
 
-#include <curl/curl.h>
+#include <curl/curl.h> // not required 
 
 #include "database.h"
-
 #include "generic_info.h"
 
 #include <signal.h>
-
 #include <time.h>
 
-#include <pthread.h>
+#include <pthread.h> // not used
 
+
+//below are libs for sockets
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
@@ -27,18 +27,26 @@
 
 #define script_ver "v0.1.7"
 
-// define timers
 
+// below int set to 1 will exit out the application
+volatile int reboot=0;
+// below flag is set to handle functions
+volatile int do_function=0;
+// keeps track of the minutes elapsed
+volatile int time_tracker_min=0;
+// keeps track of seconds
+volatile long long time_tracker_sec=0;
+// keeps track of the status of TCP
+volatile int tcp_status=0;
+
+
+// define individual timers 
 timer_t firstTimerID;
 timer_t secondTimerID;
 timer_t thirdTimerID;
 
-volatile int reboot=0;
-volatile int do_function=0;
-volatile int time_tracker_min=0;
 
-
-// timer functions
+// timer functions that will called when a signal is fired based on the respective timer
 void firstCB()
 {
 printf("Function 1 from timer 1 called \n");
@@ -46,43 +54,36 @@ printf("Function 1 from timer 1 called \n");
 
 void secondCB()
 {
-
 printf( "Function 2 from timer 2 called \n");
-poll_ioline_state();
 }
 
 void thirdCB()
 {
-
 printf( "Function 3 from timer 3 called \n");
 }
 
-int guard(int r, char * err) 
-{
-if (r == -1) 
-    { 
-    perror(err); 
-    exit(1); 
-    } 
-return r;
-}
+
 
 
 // function to handle events raised by the timer signals
 static void timerHandler( int sig, siginfo_t *si, void *uc )
 {
+    // tidp is stored with the name of the timer that raised the signal
     timer_t *tidp;
     tidp = si->si_value.sival_ptr;
 
     if ( *tidp == firstTimerID )
+    // if signal originated by first timer then call function firstCB()
         firstCB();
     else if ( *tidp == secondTimerID )
+    // if signal originated by second timer then call function secondCB()
         secondCB();
     else if ( *tidp == thirdTimerID )
+    // if signal originated by third timer then call function thirdCB()
         thirdCB();
 }
 
-// function to make timers and assign the signals with the timer expires
+// function to make timers and assign the signals with the timer expires ; returns 0 on success and -1 on failure
 static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
 {
     struct sigevent         te;
@@ -92,6 +93,7 @@ static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
 
     /* Set up signal handler. */
     sa.sa_flags = SA_SIGINFO;
+    // assigning below the signal- the function call that will be called by the timer on expiration
     sa.sa_sigaction = timerHandler;
     sigemptyset(&sa.sa_mask);
     if (sigaction(sigNo, &sa, NULL) == -1)
@@ -104,12 +106,14 @@ static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
     te.sigev_notify = SIGEV_SIGNAL;
     te.sigev_signo = sigNo;
     te.sigev_value.sival_ptr = timerID;
+    // initialize the timer with timer id passed along, the signal that should be evoked
     timer_create(CLOCK_REALTIME, &te, timerID);
-
+    // configure the intervals the timer should execute on
     its.it_interval.tv_sec = intervalS;
     its.it_interval.tv_nsec = 0;
     its.it_value.tv_sec = expireS;
     its.it_value.tv_nsec = 0;
+    // set the timer in motion
     timer_settime(*timerID, 0, &its, NULL);
 
     return(0);
@@ -119,7 +123,7 @@ static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
 
 
 
-// function to fire all the timers
+// function to fire all the timers ; returns 0 on succes and <0 on failure
 static int srtSchedule( void )
 {
     int rc1,rc2,rc3;
@@ -129,51 +133,60 @@ static int srtSchedule( void )
 
     rc3 = makeTimer("Third Timer", &thirdTimerID, 10, 10);
 
-    return (rc1*rc2*rc3);
+    return (rc1+rc2+rc3);
 }
 
 
-
+// below is the main signal that will set flags
 void sigalrm_handler( int sig )
 {
-    //reboot=1;
-    time_tracker_min++;
-
-    if (time_tracker_min%5==0)
+    // below updates every second
+    time_tracker_sec++;
+    
+    // we do a check and update our minute counter every 60 seconds
+    //
+    if(time_tracker%60==0)
     {
-    do_function = 1; // send poll bus data
+        time_tracker_min++;
+        //every 5 minute we send the periodic report
+        if (time_tracker_min%2==0)
+        {
+        do_function = 1; // every 2 minutes check io lines
+        }
+
+        if (time_tracker_min%5==0)
+        {
+        do_function = 2; // every 5 minutes send poll data
+        }
+
+        if (time_tracker_min%60==0)
+        {
+        do_function = 3; // every hour 
+        }
+        // if the minute count is 720 i.e 12 hours then reset the count of min and sec to 0
+        if (time_tracker_min==720)
+        {
+        time_tracker_sec=0;
+        time_tracker_min=0;
+        }
+
     }
-
-    if (time_tracker_min%10==0)
-    {
-     do_function = 2; // send unix time stamp
-    }
-
-    if (time_tracker_min%2==0)
-    {
-     do_function = 3; // check io lines
-    }
-
-    // remove below line as this is only for debug
-
-    alarm(60);
+    // re run the alarm for every second
+    alarm(1);
 }
 
 
-
+// function to send data over tcp
 void send_tcp_data(void *data)
 {
 
-
-    char buffer[BUFSIZ];
     char protoname[] = "tcp";
     struct protoent *protoent;
     int ret;
     in_addr_t in_addr;
     in_addr_t server_addr;
     int sockfd;
-    size_t getline_buffer = 0;
-    ssize_t nbytes_read, user_input_len;
+
     struct hostent *hostent;
     /* This is the struct used by INet addresses. */
     struct sockaddr_in sockaddr_in;
@@ -185,6 +198,7 @@ void send_tcp_data(void *data)
 
 
     /* Get socket. */
+    // sets the protocol to TCP
     protoent = getprotobyname(protoname);
     if (protoent == NULL) {
         perror("getprotobyname");
@@ -193,15 +207,18 @@ void send_tcp_data(void *data)
     sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
     if (sockfd == -1) {
         perror("socket");
+        tcp_status=-1;
         exit(EXIT_FAILURE);
     }
 
     /* Prepare sockaddr_in. */
+    // gets ip from a dns
     hostent = gethostbyname(server_hostname);
     if (hostent == NULL) {
         fprintf(stderr, "error: gethostbyname(\"%s\")\n", server_hostname);
         exit(EXIT_FAILURE);
     }
+    //sets up address from hostent(reverse ip)
     in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
     if (in_addr == (in_addr_t)-1) {
         fprintf(stderr, "error: inet_addr(\"%s\")\n", *(hostent->h_addr_list));
@@ -215,10 +232,12 @@ void send_tcp_data(void *data)
     /* Do the actual connection. */
     if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
          printf ("Socket creation failed \n");
+         tcp_status=-1;
     }
 
     printf("Sending data : %s",this);   
     ret = send(sockfd, this, strlen(this)+1,0);
+    // check the ret abd tge size of sent data ; if the match then all data has been sent    
     if (ret == (strlen(this)+1))
     {
     printf ("Success ! Message sent\n");
@@ -229,7 +248,7 @@ void send_tcp_data(void *data)
    // ret= close(sockfd);
     //printf (" %d is the return for close \n",ret);
     }
-
+    // check for response from server and print response will require business logic implementation 
      if( recv(sockfd, this , 2000 , 0) < 0)
     {
         printf("recv failed");
@@ -239,19 +258,19 @@ void send_tcp_data(void *data)
 
 }
 
+
+// function to poll modbus data
 void poll_modbus_data()
 {
 
 int ret,i;
+char timestamp[26];
+//FILE *in;
+//FILE *grab;
+char* sql_buff;
+char* temp_buff;
 
-
-  char timestamp[26];
-  //FILE *in;
-  //FILE *grab;
-  char* sql_buff;
-  char* temp_buff;
-
-  int res,ret1;
+int res,ret1;
 
 double value;
 
@@ -265,65 +284,53 @@ char datatags[5][5];
     strcpy (datatags[3],"Tag4");
     strcpy (datatags[4],"Tag5");
 
-  // variables to prepare periodic information 
+// variables to prepare periodic information 
 
-  int fix=1,course=2,speed=3,navdist=4,alt=5,power=6,bat=7,in7=8,out=9,dop=10,satsused=11;
-  int REG0=0,REG1=1,REG2=2,REG3=3,REG4=4,REG5=5,REG6=6,REG7=7,REG8=8,REG9=9,REG10=10,REG11=11,REG12=12,REG13=13,REG14=14,REG15=15;
-  int REG16=16,REG17=17,REG18=18,REG19=19,REG20=20,REG21=21,REG22=22,REG23=23,REG24=24,REG25=25;
-  char sendtime[10]="",date[11]="",lat[]="dummylat",lon[]="dummylon";
-  char imei[14];
-    char  datatosend[1024];
-  char buff[100]; 
+int fix=1,course=2,speed=3,navdist=4,alt=5,power=6,bat=7,in7=8,out=9,dop=10,satsused=11;
+int REG0=0,REG1=1,REG2=2,REG3=3,REG4=4,REG5=5,REG6=6,REG7=7,REG8=8,REG9=9,REG10=10,REG11=11,REG12=12,REG13=13,REG14=14,REG15=15;
+int REG16=16,REG17=17,REG18=18,REG19=19,REG20=20,REG21=21,REG22=22,REG23=23,REG24=24,REG25=25;
+char sendtime[10]="",date[11]="",lat[]="dummylat",lon[]="dummylon";
+char imei[14];
+char  datatosend[1024];
+char buff[100]; 
 
+/*
   // iterate through the above tags to obtain the value for each of them
-    
-
     for (i = 0; i < 5; i++)
     {
-    printf ("Tag Name = %s", datatags[i]);
+        printf ("Tag Name = %s", datatags[i]);
+        value = 0;
+        ret = read_tag_latest_data_from_db(datatags[i],"cpanel",1,1,&value,timestamp);  
+        if (ret == 0)
+	    {
+	        printf ("Tag : %lf - %d @ %s \n", value, ret, timestamp);
 
-
-      value = 0;
-
-      ret = read_tag_latest_data_from_db(datatags[i],"cpanel",1,1,&value,timestamp);  
-
-
-
-
- if (ret == 0)
-	{
-	  printf ("Tag : %lf - %d @ %s \n", value, ret, timestamp);
-
-     // printf ("Attempting to update data\n");
-     // ret1 = update_timestamp_for_tagname(datatags[i],"cpanel",1,temp_buff);  //return 0:success -1:Error
-     //  if (ret1 == 0)
-	  //  {
-       //     printf ("updated timestamp on database %s \n", temp_buff);
-        //    printf ("Attempting to delete from database\n");
-         //   ret = delete_tags_data_from_db ();
-          //  if (ret == 0)
-           // {
-            //    printf ("Tags deleted from database \n");
-            //}
-     //   }  
-	}
-else
-    printf("Could not obtain data \n");
+            // printf ("Attempting to update data\n");
+            // ret1 = update_timestamp_for_tagname(datatags[i],"cpanel",1,temp_buff);  //return 0:success -1:Error
+            //  if (ret1 == 0)
+	        //  {
+            //      printf ("updated timestamp on database %s \n", temp_buff);
+            //      printf ("Attempting to delete from database\n");
+            //      ret = delete_tags_data_from_db ();
+            //      if (ret == 0)
+            //          {
+            //              printf ("Tags deleted from database \n");
+            //          }
+            //   }  
+        }
+        else
+        printf("Could not obtain data \n");
 
     }
+*/
 
-
-
-
-
-
+    //obtain imei number
     ret = get_imei (imei, 15);
     imei[strlen(imei)-1]='\0';
 
-
+    // obtain time and date
     time_t t;
     struct tm *tmp;
-
     t = time(NULL);
     tmp = localtime(&t);
 
@@ -335,6 +342,7 @@ else
     snprintf(date, sizeof(date), "%s",buff);
     date[strlen(date)] = '\0';
 
+    //get the modbus data values
     ret = read_tag_latest_data_from_db("Tag1","cpanel",1,1,&value,timestamp); 
     REG0=value;
     ret = read_tag_latest_data_from_db("Tag2","cpanel",1,1,&value,timestamp); 
@@ -346,77 +354,82 @@ else
     ret = read_tag_latest_data_from_db("Tag5","cpanel",1,1,&value,timestamp); 
     REG4=value;
 
+    // prepare the format of the periodic CAN message
+    snprintf(datatosend, sizeof(datatosend), "CANP36,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",imei,sendtime,date,lat,lon,fix,course,speed,navdist,alt,power,bat,in7,out,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    //terminate with a NULL
+    datatosend[strlen(datatosend)] = '\0';
+    //DEBUG PURPOSE: show the data that has been sent     
+    printf("%s",datatosend);
 
-
-
-
-snprintf(datatosend, sizeof(datatosend), "CANP36,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",imei,sendtime,date,lat,lon,fix,course,speed,navdist,alt,power,bat,in7,out,dop,satsused,REG0,REG1,REG2,REG3,REG4);
-datatosend[strlen(datatosend)] = '\0';
-printf("%s",datatosend);
-
-//calling send tcp
-send_tcp_data(&datatosend);
+    //calling send tcp to send the data
+    send_tcp_data(&datatosend);
 
 
 }
 
-
+// function to check the io lines
 void poll_ioline_state()
 {
 
-
-printf("entered polling section for iolines state\n");
+    // for Debug purpose only
+    //printf("entered polling section for iolines state\n");
 
 int iostate;
 
-iostate=get_gpio_value(0);
-printf ("IO state for 0 is %d\n", iostate);
+    iostate=get_gpio_value(30);
+    printf ("IO state for digital input 1 (internal pin 30) is %d\n", iostate);
 
-iostate=get_gpio_value(1);
-printf ("IO state for 1 is %d\n", iostate);
+    iostate=get_gpio_value(31);
+    printf ("IO state for digital input 2 (internal pin 31) is %d\n", iostate);
 
-iostate=get_gpio_value(2);
-printf ("IO state for 2 is %d\n", iostate);
+    iostate=get_gpio_value(32);
+    printf ("IO state for 2 is %d\n", iostate);
+
+    iostate=get_gpio_value(62);
+    printf ("IO state for 3 is %d\n", iostate);
 }
 
 
-
+// function to send the sign on 
 void ready_device()
 {
  
+    //for DEBUG purpose only
+    //printf("The device has just rebooted \n");  
+int ret;
+char imei[14],logger_id[20];
+    
+    //get the loggerid - this will be from the CSV file uploaded to master_modbus
+    ret = get_loggerid(logger_id); 
 
- printf("The device has just rebooted \n");  
- int ret;
- char imei[14],logger_id[20];
+    //get the imei
+    ret = get_imei (imei, 15);
 
- ret = get_loggerid(logger_id); 
-
- ret = get_imei (imei, 15);
- printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s \n", script_ver, imei, logger_id);
- 
-
-
-
-printf("This version contains the below \n");
-printf("1. Modularize the functionality \n");
-printf("2. Send data buffer over TCP \n");
-printf("3. experiment timers and signals and alarms \n");
+    // to give info to the user on terminal  
+    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s \n", script_ver, imei, logger_id);
+    printf("This release of the script contains the below \n");
+    printf("1. Modularization of the functionality \n");
+    printf("2. Modbus data is now read \n");
+    printf("3. Send data buffer over TCP \n");
+    printf("4. Timers and Signals to control events \n");
+    printf("5. IO lines are now read\n");
 
 
 char  datatosend[100];
 
 
 
-snprintf(datatosend, sizeof(datatosend), "&<MSG.Info.ServerLogin>\r<&IMEI=%s\r&<end>\r",imei);
-datatosend[strlen(datatosend)] = '\0';
-printf("%s",datatosend);
+    snprintf(datatosend, sizeof(datatosend), "&<MSG.Info.ServerLogin>\r<&IMEI=%s\r&<end>\r",imei);
+    datatosend[strlen(datatosend)] = '\0';
+    printf("%s",datatosend);
 
-//calling send tcp
-send_tcp_data(&datatosend);
+    //calling send tcp
+    send_tcp_data(&datatosend);
 
  
 }
 
+// a threaded function to manage on seperate thread. left unused for now - will incorporate for sending data or polling database
 void * thread_func() 
 {
  
@@ -426,17 +439,17 @@ void * thread_func()
 
 }
 
-
+// function to handle termination of application
 void  INThandler(int sig)
 {
-     char  c;
 
-     signal(sig, SIG_IGN);
-     printf("Application Exiting Gracefully\n");
-  char  datatosend[] ="Application Stopped running";
-  send_tcp_data(&datatosend);
-     reboot=1;
-          
+char  c;
+    signal(sig, SIG_IGN);
+    printf("Application Closing Gracefully\n");
+char  datatosend[] ="Application Stopped running";
+    send_tcp_data(&datatosend);
+    //setting reboot to 1 will exit the worker loop
+    reboot=1;
 
 }
 
@@ -447,29 +460,20 @@ int main (int argc, char *argv[])
 {
 
 
-  int ret = -1, i;
-
-
-  double size, lat, lon, alt;
-
-  char timestamp[26];
-  FILE *in;
-  FILE *grab;
-  char* sql_buff;
-  char* temp_buff;
-  size_t timer1; 
-  int res,ret1;
-  char this[1024];
-  int data_length;
-  char buff[100]; 
-  char imei[14];
+int ret = -1, i;
+double size, lat, lon, alt;
+char timestamp[26];
+size_t timer1; 
+int res,ret1;
+char this[1024];
+int data_length;
+char buff[100]; 
+char imei[14];
 
 
 
-
+    // create a signal and assign the alarm handler
     struct sigaction sact;
-
-
     sigemptyset (&sact.sa_mask);
     sact.sa_flags = 0;
     sact.sa_handler = sigalrm_handler;
@@ -480,25 +484,27 @@ int main (int argc, char *argv[])
     
     //poll_ioline_state();
 
-    //threading a open tcp read connection
-    pthread_t thread_id;
-    printf("Calling a thread");
-    int ret2 = pthread_create(&thread_id, NULL, thread_func, NULL);
-    if (ret2 != 0) 
-    { 
-        printf("Error from pthread: %d\n", ret2); 
-    }
+    //threading related
+    //pthread_t thread_id;
+    //printf("Calling a thread");
+    //int ret2 = pthread_create(&thread_id, NULL, thread_func, NULL);
+    //if (ret2 != 0) 
+    //{ 
+    //    printf("Error from pthread: %d\n", ret2); 
+    //}
     
+    // to capture the cntrl+c
     signal(SIGINT, INThandler);
 
+    //start the auxillary timers
     ret=srtSchedule();
     if (ret==0)
-{
-printf("THE TIMERS STARTED ROCKSTAR");
-}
+    {
+    printf("THE AUXILLARY TIMERS HAVE STARTED");
+    }
     
-    alarm(60);  /* Request SIGALRM in 60 seconds */
-  printf("Alarm called and should fire in 60 seconds\n");
+    alarm(1);  /* Request SIGALRM each second*/
+
 
 
 
@@ -510,47 +516,42 @@ printf("THE TIMERS STARTED ROCKSTAR");
     
 
 
-    // buff here is to print the time on the console for debug purpose
+    // DEBUG purpose buff here is to print the time on the console 
     time_t now = time (0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
     printf ("%s\n", buff);
 
 
-    //poll_modbus_data();
 
-    snprintf(this, sizeof(this), "Unix Time:  %d \n",(int)time(NULL));
-    data_length = strlen(this);
-    this[data_length] = '\0';
-    //send_tcp_data(this);
-    
+
     
 
 
     // a sleep for 1 seconds
     sleep(1);
 
-    switch(do_function){
+    switch(do_function)
+    {
 
     case 1:
-            printf("I got hit by a 1 and will poll the modbus now\n");
-            poll_modbus_data();
+            printf("I got hit by a 1 and will check my IO lines now\n");
+            poll_ioline_state();
             do_function=0;
             break;
 
     case 2:
-            printf("I got hit by a 2 and will send the data on tcp now\n");
-            send_tcp_data(&this);
+            printf("I got hit by a 2 and will send the periodic data on tcp now\n");
+            poll_modbus_data();            
             do_function=0;
             break;
 
     case 3:
-            printf("I got hit by a 3 and will check my IO lines\n");
-            poll_ioline_state();    
+            printf("I got hit by a 3 and this occurs only once an hour\n");
             do_function=0;
             break;
     default:
-            printf("No Action Taken\n");
-}
+            break;
+    }
 
 
 }
@@ -559,31 +560,7 @@ printf("THE TIMERS STARTED ROCKSTAR");
     exit(0);
     return 0;}
 
-/*
 
- CURL *curl;
-  curl_global_init(CURL_GLOBAL_ALL);
-  curl = curl_easy_init();
-  curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
-  //curl_easy_setopt(curl, CURLOPT_URL, "http://httpbin.org/post");
-  //curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 0);
-  //curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writer);
-  //curl_easy_setopt(curl, CURLOPT_POST, 1);
-  //curl_easy_setopt(curl, CURLOPT_POSTFIELDS, "foo=bar&foz=baz");
-  //Perform the request, res will get the return code 
-printf("Trying to send data \n");
-    res = curl_easy_perform(curl);
-    // Check for errors 
-    if(res != CURLE_OK)
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(res));
- 
-    // always cleanup 
-    curl_easy_cleanup(curl);
-
-   
-*/
-// write code to send data over tcp
 
     
 /*
