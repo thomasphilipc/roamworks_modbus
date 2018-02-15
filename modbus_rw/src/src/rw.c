@@ -266,13 +266,15 @@ void sigalrm_handler( int sig )
     //below functions should be fired right away when a change in state occurs
     if ((ign_state==0)&&(hodor==1))
     { 
-    do_function=4;
+    do_function=4; 
+    //ignition off
     hodor=0;
     }
 
     if ((ign_state==1)&&(hodor==1))
     { 
     do_function=5;
+    // ignition on
     hodor=0;
     }
 
@@ -281,10 +283,10 @@ void sigalrm_handler( int sig )
     do_function=6;
     }
 
-    if (pwr_state==1)
-    {
-    do_function=7;
-    }
+    //if (pwr_state==1)
+    //{
+    //do_function=7;
+    //}
     // re run the alarm for every second
     alarm(1);
 }
@@ -307,9 +309,7 @@ int send_tcp_data(void *data)
     //char *server_hostname = "87.201.44.16";
     char *server_hostname = "80.227.131.54";
     unsigned short server_port = 6102; 
-    char this[2048];
-    strcpy(this,data);
-    
+
 
 
     /* Get socket. */
@@ -350,14 +350,13 @@ int send_tcp_data(void *data)
          tcp_status=-1;
     }
     // for debug only
-    size_t len = strlen(this); // will calculate number of non-0 symbols before first 0
-    char * newBuf = (char *)malloc(len); // allocate memory for new array, don't forget to free it later
-    memcpy(newBuf, this, len); // copy data from old buf to new one
-    printf("Sending data : %s",this);   
-    ret = send(sockfd, newBuf, strlen(newBuf),0);
+    
+
+
+    ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
 
-    if (ret == (strlen(newBuf)))
+    if (ret == (strlen(data)))
     {
         // check for response from server and print response will require business logic implementation 
         //if( recv(sockfd, this , 2000 , 0) < 0)
@@ -366,11 +365,11 @@ int send_tcp_data(void *data)
         //}
         //printf("Recieved reply: %s",this);
     return 0;
-    free (newBuf);
+
     }
     else
     return -1;
-    free (newBuf);
+
     //ret = shutdown(sockfd, SHUT_WR);
     //printf (" %d is the return for shutdown \n",ret);
     //ret= close(sockfd);
@@ -547,35 +546,32 @@ void send_ignition_on()
 {
 
 
+    char ign_command[13];
+    printf("sending ignition on\n");
 
-
-
-    snprintf(temp_buff, sizeof(temp_buff), "Ignition ON");
-    temp_buff[strlen(temp_buff)] = '\0';
-    printf("%s",temp_buff);
+    snprintf(ign_command, sizeof(ign_command)-1, "Ignition ON");
 
     //calling send tcp
 
 
-    pthread_t thread_id = launch_thread_send_data((void*)temp_buff);
+    pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
 }
 
 void send_ignition_off()
 {
+    char ign_command[14];
+
+    printf("sending ignition off\n");
 
 
+    snprintf(ign_command, sizeof(ign_command)-1, "Ignition OFF");
 
-
-
-    snprintf(temp_buff, sizeof(temp_buff), "Ignition OFF");
-    temp_buff[strlen(temp_buff)] = '\0';
-    printf("%s",temp_buff);
 
     //calling send tcp
 
 
-    pthread_t thread_id = launch_thread_send_data((void*)temp_buff);
+    pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
 }
 
@@ -751,7 +747,12 @@ char imei[14];
             break;
     
     case 6:
-            printf("I got hit by a 6 and this is power\n");
+            printf("I got hit by a 6 and this is power loss\n");
+            do_function=0;
+            break;
+
+    case 7:
+            printf("I got hit by a 7 and this is power restore\n");
             do_function=0;
             break;
 
