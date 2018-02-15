@@ -39,17 +39,62 @@ volatile long long time_tracker_sec=0;
 // keeps track of the status of TCP
 volatile int tcp_status=0;
 
+int hodor=1;
+
+// below variables are to handle ignition
+int ign_filter=0;
+int ign_state=-1;
+int pwr_state=1;
+
 
 // define individual timers 
 timer_t firstTimerID;
 timer_t secondTimerID;
 timer_t thirdTimerID;
 
+int poll_ioline_state(int);
+int prev_io_state=-1;
 
 // timer functions that will called when a signal is fired based on the respective timer
 void firstCB()
 {
+int ret;
 printf("Function 1 from timer 1 called \n");
+  ret = poll_ioline_state(prev_io_state);
+    
+    
+    if ((ret==0)&&(pwr_state==1))
+    {
+    //confirm power loss and send message    
+    // set pwr_state to 0 to indicate unit lost power    
+    }
+    
+    if (ret==1 && ign_state==1)
+    {
+    // confirm ignition off and send message
+        ign_filter--;
+        if (ign_filter==-5)
+        {
+            ign_state=0;
+            ign_filter=0;
+            hodor=1;
+        }
+    // set ign_state to 0 to indicate ignition is OFF
+    }
+    
+    if (ret==2 && ign_state<=0)
+    {
+        ign_filter++;
+        if (ign_filter==5)
+        {
+            ign_state=1;
+            ign_filter=0;
+            hodor=1;
+        }   
+    // confirm ignition on and send message
+    // set ign_state to 0 to indicate ignition is OFF
+    }
+    prev_io_state=ret;
 }
 
 void secondCB()
@@ -171,6 +216,7 @@ void sigalrm_handler( int sig )
 {
     // below updates every second
     time_tracker_sec++;
+
     
     // we do a check and update our minute counter every 60 seconds
     //
@@ -188,7 +234,7 @@ void sigalrm_handler( int sig )
         do_function = 2; // every 5 minutes send poll data
         }
 
-        if (time_tracker_min%60==0)
+        if (time_tracker_min%30==0)
         {
         do_function = 3; // every hour 
         }
@@ -198,7 +244,24 @@ void sigalrm_handler( int sig )
         time_tracker_sec=0;
         time_tracker_min=0;
         }
+    }
 
+    //below functions should be fired right away
+    if ((ign_state==0)&&(hodor==1))
+    { 
+    do_function=4;
+    hodor=0;
+    }
+
+    if ((ign_state==1)&&(hodor==1))
+    { 
+    do_function=5;
+    hodor=0;
+    }
+
+    if (pwr_state==0)
+    {
+    do_function=6;
     }
     // re run the alarm for every second
     alarm(1);
@@ -271,6 +334,7 @@ int send_tcp_data(void *data)
     printf("Sending data : %s",this);   
     ret = send(sockfd, newBuf, strlen(newBuf),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
+
     if (ret == (strlen(newBuf)))
     {
         // check for response from server and print response will require business logic implementation 
@@ -280,10 +344,11 @@ int send_tcp_data(void *data)
         //}
         //printf("Recieved reply: %s",this);
     return 0;
-    
+    free (newBuf);
     }
     else
     return -1;
+    free (newBuf);
     //ret = shutdown(sockfd, SHUT_WR);
     //printf (" %d is the return for shutdown \n",ret);
     //ret= close(sockfd);
@@ -405,27 +470,90 @@ char buff[100];
 }
 
 // function to check the io lines
-void poll_ioline_state()
+int poll_ioline_state(int prev_io_state)
 {
 
     // for Debug purpose only
     //printf("entered polling section for iolines state\n");
+    // return -1 for power loss
+    // return 0 for ignition off
+    //  return 1 for ignition on
 
-int iostate;
+int ret;
+int powerstate;
+int ignstate;
 
-    iostate=get_gpio_value(30);
-    printf ("IO state for digital input 1 (internal pin 30) is %d\n", iostate);
+    powerstate=get_gpio_value(30);
+    printf ("IO state for digital input 1 (Power)(internal pin 30) is %d\n", powerstate);
 
-    iostate=get_gpio_value(31);
-    printf ("IO state for digital input 2 (internal pin 31) is %d\n", iostate);
+    ignstate=get_gpio_value(31);
+    printf ("IO state for digital input 2 (Ignition)(internal pin 31) is %d\n", ignstate);
 
-    iostate=get_gpio_value(32);
-    printf ("IO state for 2 is %d\n", iostate);
+    //iostate=get_gpio_value(32);
+    //printf ("IO state for 2 is %d\n", iostate);
 
-    iostate=get_gpio_value(62);
-    printf ("IO state for 3 is %d\n", iostate);
+    //iostate=get_gpio_value(62);
+    //printf ("IO state for 3 is %d\n", iostate);
+
+
+    if (powerstate==0)
+    {
+        ret=0;
+    }
+
+     if ((powerstate==1)&&(ignstate==0))
+    {
+        ret=1;
+    }
+
+     if ((powerstate==1)&&(ignstate==1))
+    {
+        ret=2;
+    }
+
+    if (ret!=prev_io_state)
+    {
+        return ret;
+    }
+    else
+        return -1;
 }
 
+void send_ignition_on()
+{
+
+char  datatosend[15];
+
+
+
+    snprintf(datatosend, sizeof(datatosend), "Ignition ON");
+    datatosend[strlen(datatosend)] = '\0';
+    printf("%s",datatosend);
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+}
+
+void send_ignition_off()
+{
+
+char  datatosend[15];
+
+
+
+    snprintf(datatosend, sizeof(datatosend), "Ignition OFF");
+    datatosend[strlen(datatosend)] = '\0';
+    printf("%s",datatosend);
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+}
 
 // function to send the sign on 
 void ready_device()
@@ -543,8 +671,6 @@ char imei[14];
 
 
 
-
-
 // Below is the main loop that will run the business logic
     do
 {
@@ -558,9 +684,11 @@ char imei[14];
     
 
 
-
-
-    
+    // check ignition and power
+    // return -1 for power loss
+    // return 0 for ignition off
+    //  return 1 for ignition on
+  
 
 
     // a sleep for 1 seconds
@@ -571,7 +699,7 @@ char imei[14];
 
     case 1:
             printf("I got hit by a 1 and will check my IO lines now\n");
-            poll_ioline_state();
+            //poll_ioline_state();
             do_function=0;
             break;
 
@@ -585,6 +713,24 @@ char imei[14];
             printf("I got hit by a 3 and this occurs only once an hour\n");
             do_function=0;
             break;
+
+    case 4:
+            printf("I got hit by a 4 and this is ignition off\n");
+            send_ignition_off();
+            do_function=0;
+            break;
+
+    case 5:
+            printf("I got hit by a 5 and this is ignition on\n");
+            send_ignition_on();
+            do_function=0;
+            break;
+    
+    case 6:
+            printf("I got hit by a 6 and this is power\n");
+            do_function=0;
+            break;
+
     default:
             break;
     }
