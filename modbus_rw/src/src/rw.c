@@ -41,10 +41,12 @@ volatile int tcp_status=0;
 
 int hodor=1;
 
+char* temp_buff;
+
 // below variables are to handle ignition
-int ign_filter=0;
-int ign_state=-1;
-int pwr_state=1;
+int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
+int ign_state=-1; // a state holder where -1 is indeterminant 
+int pwr_state=1;  // a power state holder , we assume it is High on start up
 
 
 // define individual timers 
@@ -58,17 +60,19 @@ int prev_io_state=-1;
 // timer functions that will called when a signal is fired based on the respective timer
 void firstCB()
 {
+// the following function checks the state of the io lines every second
 int ret;
 printf("Function 1 from timer 1 called \n");
-  ret = poll_ioline_state(prev_io_state);
-    
-    
+    // gets the latest io line states  
+    ret = poll_ioline_state(prev_io_state);
+    // TO DO POWER LOSS AND RESTORE
+    // if current read power state is LOW and the previous power state was HIGH/ on
     if ((ret==0)&&(pwr_state==1))
     {
     //confirm power loss and send message    
     // set pwr_state to 0 to indicate unit lost power    
     }
-    
+    // if ignition is OFF and the current ignition state is ON
     if (ret==1 && ign_state==1)
     {
     // confirm ignition off and send message
@@ -94,6 +98,18 @@ printf("Function 1 from timer 1 called \n");
     // confirm ignition on and send message
     // set ign_state to 0 to indicate ignition is OFF
     }
+
+// to reset filtering on spikes
+    if ((ign_state==1)&&(ret==2))
+{
+    //ign_filter=0;
+}
+    if ((ign_state==0)&&(ret==1))
+{
+    //ign_filter=0;
+}
+    
+    // save the last read io state
     prev_io_state=ret;
 }
 
@@ -112,7 +128,8 @@ void * thread_func(void *data)
 {
     
 int ret; 
-  printf("reached the thread %s \n",(char *)data);
+  printf("reached the thread with data as %s \n",(char *)data);
+  // calls the send tcp data function by passing a pointer to data string
   ret=send_tcp_data((char *)data);
   if (ret<0)
 {
@@ -127,7 +144,7 @@ pthread_t launch_thread_send_data(void *data)
 {
 
 pthread_t tid;
-    printf("Calling a thread to send data %s",data);
+    printf("Calling a thread to send data as %s",data);
     int ret = pthread_create(&tid, NULL, thread_func, (void *)data);
     if (ret != 0) 
     { 
@@ -246,7 +263,7 @@ void sigalrm_handler( int sig )
         }
     }
 
-    //below functions should be fired right away
+    //below functions should be fired right away when a change in state occurs
     if ((ign_state==0)&&(hodor==1))
     { 
     do_function=4;
@@ -262,6 +279,11 @@ void sigalrm_handler( int sig )
     if (pwr_state==0)
     {
     do_function=6;
+    }
+
+    if (pwr_state==1)
+    {
+    do_function=7;
     }
     // re run the alarm for every second
     alarm(1);
@@ -368,7 +390,7 @@ char timestamp[26];
 //FILE *in;
 //FILE *grab;
 char* sql_buff;
-char* temp_buff;
+
 
 int res,ret1;
 
@@ -510,6 +532,8 @@ int ignstate;
     {
         ret=2;
     }
+    
+    // if the current and previous states are same then pass -1 else pass 0/1/2 as required
 
     if (ret!=prev_io_state)
     {
@@ -522,36 +546,36 @@ int ignstate;
 void send_ignition_on()
 {
 
-char  datatosend[15];
 
 
 
-    snprintf(datatosend, sizeof(datatosend), "Ignition ON");
-    datatosend[strlen(datatosend)] = '\0';
-    printf("%s",datatosend);
+
+    snprintf(temp_buff, sizeof(temp_buff), "Ignition ON");
+    temp_buff[strlen(temp_buff)] = '\0';
+    printf("%s",temp_buff);
 
     //calling send tcp
 
 
-    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_t thread_id = launch_thread_send_data((void*)temp_buff);
     pthread_join(thread_id,NULL);
 }
 
 void send_ignition_off()
 {
 
-char  datatosend[15];
 
 
 
-    snprintf(datatosend, sizeof(datatosend), "Ignition OFF");
-    datatosend[strlen(datatosend)] = '\0';
-    printf("%s",datatosend);
+
+    snprintf(temp_buff, sizeof(temp_buff), "Ignition OFF");
+    temp_buff[strlen(temp_buff)] = '\0';
+    printf("%s",temp_buff);
 
     //calling send tcp
 
 
-    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_t thread_id = launch_thread_send_data((void*)temp_buff);
     pthread_join(thread_id,NULL);
 }
 
