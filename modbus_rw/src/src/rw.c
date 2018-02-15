@@ -62,7 +62,36 @@ void thirdCB()
 printf( "Function 3 from timer 3 called \n");
 }
 
+// a threaded function to manage on seperate thread. left unused for now - will incorporate for sending data or polling database
+void * thread_func(void *data) 
+{
+    
+int ret; 
+  printf("reached the thread %s \n",(char *)data);
+  ret=send_tcp_data((char *)data);
+  if (ret<0)
+{
+    printf("Message sending failed\n");
+}
 
+  
+
+}
+
+pthread_t launch_thread_send_data(void *data)
+{
+
+pthread_t tid;
+    printf("Calling a thread to send data %s",data);
+    int ret = pthread_create(&tid, NULL, thread_func, (void *)data);
+    if (ret != 0) 
+    { 
+        printf("Error from pthread: %d\n", ret); 
+    }
+
+    return tid;
+
+}
 
 
 // function to handle events raised by the timer signals
@@ -145,7 +174,7 @@ void sigalrm_handler( int sig )
     
     // we do a check and update our minute counter every 60 seconds
     //
-    if(time_tracker%60==0)
+    if(time_tracker_sec%60==0)
     {
         time_tracker_min++;
         //every 5 minute we send the periodic report
@@ -177,7 +206,7 @@ void sigalrm_handler( int sig )
 
 
 // function to send data over tcp
-void send_tcp_data(void *data)
+int send_tcp_data(void *data)
 {
 
     char protoname[] = "tcp";
@@ -190,6 +219,7 @@ void send_tcp_data(void *data)
     struct hostent *hostent;
     /* This is the struct used by INet addresses. */
     struct sockaddr_in sockaddr_in;
+    //char *server_hostname = "87.201.44.16";
     char *server_hostname = "80.227.131.54";
     unsigned short server_port = 6102; 
     char this[2048];
@@ -234,26 +264,31 @@ void send_tcp_data(void *data)
          printf ("Socket creation failed \n");
          tcp_status=-1;
     }
-
+    // for debug only
+    size_t len = strlen(this); // will calculate number of non-0 symbols before first 0
+    char * newBuf = (char *)malloc(len); // allocate memory for new array, don't forget to free it later
+    memcpy(newBuf, this, len); // copy data from old buf to new one
     printf("Sending data : %s",this);   
-    ret = send(sockfd, this, strlen(this)+1,0);
+    ret = send(sockfd, newBuf, strlen(newBuf),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
-    if (ret == (strlen(this)+1))
+    if (ret == (strlen(newBuf)))
     {
-    printf ("Success ! Message sent\n");
+        // check for response from server and print response will require business logic implementation 
+        //if( recv(sockfd, this , 2000 , 0) < 0)
+        //{
+        //    printf("recv failed");
+        //}
+        //printf("Recieved reply: %s",this);
+    return 0;
     
-//printf (" %d is the return \n",ret);
-  //  ret = shutdown(sockfd, SHUT_WR);
-   // printf (" %d is the return for shutdown \n",ret);
-   // ret= close(sockfd);
+    }
+    else
+    return -1;
+    //ret = shutdown(sockfd, SHUT_WR);
+    //printf (" %d is the return for shutdown \n",ret);
+    //ret= close(sockfd);
     //printf (" %d is the return for close \n",ret);
-    }
-    // check for response from server and print response will require business logic implementation 
-     if( recv(sockfd, this , 2000 , 0) < 0)
-    {
-        printf("recv failed");
-    }
-    printf("Recieved reply: %s",this);
+
 
 
 }
@@ -362,7 +397,9 @@ char buff[100];
     printf("%s",datatosend);
 
     //calling send tcp to send the data
-    send_tcp_data(&datatosend);
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+
 
 
 }
@@ -419,25 +456,22 @@ char  datatosend[100];
 
 
 
-    snprintf(datatosend, sizeof(datatosend), "&<MSG.Info.ServerLogin>\r<&IMEI=%s\r&<end>\r",imei);
+    snprintf(datatosend, sizeof(datatosend), "$<MSG.Info.ServerLogin>\r$IMEI=%s\r$SUCCESS\r$<end>\r",imei);
     datatosend[strlen(datatosend)] = '\0';
     printf("%s",datatosend);
 
     //calling send tcp
-    send_tcp_data(&datatosend);
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
 
  
 }
 
-// a threaded function to manage on seperate thread. left unused for now - will incorporate for sending data or polling database
-void * thread_func() 
-{
- 
-  printf("reached the thread \n");
 
-  
 
-}
+
 
 // function to handle termination of application
 void  INThandler(int sig)
@@ -446,8 +480,9 @@ void  INThandler(int sig)
 char  c;
     signal(sig, SIG_IGN);
     printf("Application Closing Gracefully\n");
-char  datatosend[] ="Application Stopped running";
-    send_tcp_data(&datatosend);
+char  datatosend[] ="Application Stopped running \n";
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
     //setting reboot to 1 will exit the worker loop
     reboot=1;
 
@@ -485,13 +520,13 @@ char imei[14];
     //poll_ioline_state();
 
     //threading related
-    //pthread_t thread_id;
-    //printf("Calling a thread");
-    //int ret2 = pthread_create(&thread_id, NULL, thread_func, NULL);
-    //if (ret2 != 0) 
-    //{ 
-    //    printf("Error from pthread: %d\n", ret2); 
-    //}
+    char *data ="testing threaded function\n"; 
+   
+    pthread_t thread_id = launch_thread_send_data((void*)data);
+    pthread_join(thread_id,NULL);
+
+
+
     
     // to capture the cntrl+c
     signal(SIGINT, INThandler);
@@ -520,6 +555,7 @@ char imei[14];
     time_t now = time (0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
     printf ("%s\n", buff);
+    
 
 
 
