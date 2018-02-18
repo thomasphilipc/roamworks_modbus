@@ -35,7 +35,9 @@ volatile int do_function=0;
 // keeps track of the minutes elapsed
 volatile int time_tracker_min=0;
 // keeps track of seconds
-volatile long long time_tracker_sec=0;
+volatile int time_tracker_sec=0;
+//keeps account of heartbeat
+volatile int hb_tracker_min;
 // keeps track of the status of TCP
 volatile int tcp_status=0;
 
@@ -47,6 +49,7 @@ char* temp_buff;
 int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
 int ign_state=-1; // a state holder where -1 is indeterminant 
 int pwr_state=1;  // a power state holder , we assume it is High on start up
+int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
 
 
 // define individual timers 
@@ -62,14 +65,22 @@ void firstCB()
 {
 // the following function checks the state of the io lines every second
 int ret;
-printf("Function 1 from timer 1 called \n");
+//printf("Function 1 from timer 1 called \n");
+//printf(" Ignstate is %d and ignfilter is %d \n\n",ign_state,ign_filter);
     // gets the latest io line states  
     ret = poll_ioline_state(prev_io_state);
     // TO DO POWER LOSS AND RESTORE
     // if current read power state is LOW and the previous power state was HIGH/ on
     if ((ret==0)&&(pwr_state==1))
     {
-    //confirm power loss and send message    
+    //confirm power loss and send message  
+        pwr_filter--;
+        if (pwr_filter==-5)
+        {
+            pwr_state=0;
+            pwr_filter=0;
+            hodor=1;
+        }
     // set pwr_state to 0 to indicate unit lost power    
     }
     // if ignition is OFF and the current ignition state is ON
@@ -102,11 +113,20 @@ printf("Function 1 from timer 1 called \n");
 // to reset filtering on spikes
     if ((ign_state==1)&&(ret==2))
 {
-    //ign_filter=0;
+    ign_filter=0;
 }
     if ((ign_state==0)&&(ret==1))
 {
-    //ign_filter=0;
+    ign_filter=0;
+}
+
+    if ((pwr_state==1)&&(ret>0))
+{
+    pwr_filter=0;
+}
+    if ((pwr_state==0)&&(ret==0))
+{
+    pwr_filter=0;
 }
     
     // save the last read io state
@@ -220,11 +240,12 @@ static int srtSchedule( void )
     int rc1,rc2,rc3;
     rc1 = makeTimer("First Timer", &firstTimerID, 1, 1);
 
-    rc2 = makeTimer("Second Timer", &secondTimerID, 5, 5);
+    //rc2 = makeTimer("Second Timer", &secondTimerID, 5, 5);
 
-    rc3 = makeTimer("Third Timer", &thirdTimerID, 10, 10);
+    //rc3 = makeTimer("Third Timer", &thirdTimerID, 10, 10);
 
-    return (rc1+rc2+rc3);
+    //return (rc1+rc2+rc3);
+    return (rc1);
 }
 
 
@@ -232,6 +253,7 @@ static int srtSchedule( void )
 void sigalrm_handler( int sig )
 {
     // below updates every second
+    //printf(" time_tracker_sec=%d and time_tracker_min=%d \n\n",time_tracker_sec,time_tracker_min);
     time_tracker_sec++;
 
     
@@ -239,27 +261,33 @@ void sigalrm_handler( int sig )
     //
     if(time_tracker_sec%60==0)
     {
-        time_tracker_min++;
+
+        hb_tracker_min=hb_tracker_min+1;
+
+        if (ign_state<1)
+        {
+        time_tracker_min=0;
+        }
+        else
+        {
+        time_tracker_min=time_tracker_min+1;
+        }
         //every 5 minute we send the periodic report
-        if (time_tracker_min%2==0)
+        if (time_tracker_min%1==0)
         {
         do_function = 1; // every 2 minutes check io lines
         }
 
-        if (time_tracker_min%5==0)
+        if ((time_tracker_min%1==0)&&(ign_state==1))
         {
-        do_function = 2; // every 5 minutes send poll data
+        do_function = 2; // every 5 minutes send periodic data while ignition on
         }
 
-        if (time_tracker_min%30==0)
+        if (hb_tracker_min==720)
         {
-        do_function = 3; // every hour 
-        }
-        // if the minute count is 720 i.e 12 hours then reset the count of min and sec to 0
-        if (time_tracker_min==720)
-        {
+        do_function = 3;   // send heartbeat
         time_tracker_sec=0;
-        time_tracker_min=0;
+        hb_tracker_min=0;
         }
     }
 
@@ -271,23 +299,34 @@ void sigalrm_handler( int sig )
     hodor=0;
     }
 
+    if ((pwr_state==0)&&(hodor==1))
+    { 
+    do_function=6; 
+    //power loss
+    hodor=0;
+    }
+
+
     if ((ign_state==1)&&(hodor==1))
     { 
     do_function=5;
     // ignition on
+    time_tracker_sec=0;
+    time_tracker_min=0;
     hodor=0;
     }
 
-    if (pwr_state==0)
-    {
-    do_function=6;
-    }
 
-    //if (pwr_state==1)
-    //{
-    //do_function=7;
-    //}
+
+    if ((pwr_state==1)&&(hodor==1))
+    { 
+    do_function=7; 
+    //power restore
+    hodor=0;
+    }
     // re run the alarm for every second
+    
+
     alarm(1);
 }
 
@@ -381,7 +420,7 @@ int send_tcp_data(void *data)
 
 
 // function to poll modbus data
-void poll_modbus_data()
+void send_modbus_data()
 {
 
 int ret,i;
@@ -407,14 +446,18 @@ char datatags[5][5];
 
 // variables to prepare periodic information 
 
-int fix=1,course=2,speed=3,navdist=4,alt=5,power=6,bat=7,in7=8,out=9,dop=10,satsused=11;
+int fix=1,course=0,speed=0,power,in7,bat,dop=0,satsused=0;
 int REG0=0,REG1=1,REG2=2,REG3=3,REG4=4,REG5=5,REG6=6,REG7=7,REG8=8,REG9=9,REG10=10,REG11=11,REG12=12,REG13=13,REG14=14,REG15=15;
 int REG16=16,REG17=17,REG18=18,REG19=19,REG20=20,REG21=21,REG22=22,REG23=23,REG24=24,REG25=25;
-char sendtime[10]="",date[11]="",lat[]="dummylat",lon[]="dummylon";
+char sendtime[10]="",date[11]="";
 char imei[14];
+double lat=0.0,lon=0.0,alt=0.0;
 char  datatosend[1024];
 char buff[100]; 
 
+
+power=pwr_state;
+in7=ign_state;
 /*
   // iterate through the above tags to obtain the value for each of them
     for (i = 0; i < 5; i++)
@@ -475,8 +518,32 @@ char buff[100];
     ret = read_tag_latest_data_from_db("Tag5","cpanel",1,1,&value,timestamp); 
     REG4=value;
 
+
+
+    ret = get_gps_latitude (&lat);
+    if (ret == 0)
+    {
+        printf (" get_gps_latitude %d \n", lat);
+    }
+
+    ret = get_gps_longitude (&lon);		  
+    if (ret == 0)
+    {
+        printf (" get_gps_longitude %d \n", lon);
+    }
+
+    ret = get_gps_altitude (&alt);
+    if (ret == 0)
+    {
+        printf (" altitude %d \n", alt);
+    } 
+    
+    //ret =getgps_data_from_db(1,"/tmp/abc");
+
+    // implement checks to validate the data
+
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "CANP36,%s,%s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",imei,sendtime,date,lat,lon,fix,course,speed,navdist,alt,power,bat,in7,out,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    snprintf(datatosend, sizeof(datatosend), "CANP36,%s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
     //terminate with a NULL
     datatosend[strlen(datatosend)] = '\0';
     //DEBUG PURPOSE: show the data that has been sent     
@@ -555,6 +622,53 @@ void send_ignition_on()
 
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
+    pthread_join(thread_id,NULL);
+}
+
+void send_heartbeat()
+{
+
+    char heartbeat_command[13];
+    printf("sending heartbeat\n");
+
+    snprintf(heartbeat_command, sizeof(heartbeat_command)-1, "heartbeat_command");
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)heartbeat_command);
+    pthread_join(thread_id,NULL);
+}
+
+void send_power_loss()
+{
+
+
+    char pwr_command[13];
+    printf("sending power loss\n");
+
+    snprintf(pwr_command, sizeof(pwr_command)-1, "Power   LOSS");
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
+    pthread_join(thread_id,NULL);
+}
+
+void send_power_restore()
+{
+
+
+    char pwr_command[13];
+    printf("sending power restore\n");
+
+    snprintf(pwr_command, sizeof(pwr_command)-1, "Power RESTORE");
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
 }
 
@@ -667,11 +781,7 @@ char imei[14];
     
     //poll_ioline_state();
 
-    //threading related
-    char *data ="testing threaded function\n"; 
-   
-    pthread_t thread_id = launch_thread_send_data((void*)data);
-    pthread_join(thread_id,NULL);
+
 
 
 
@@ -702,7 +812,7 @@ char imei[14];
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
     printf ("%s\n", buff);
     
-
+    sleep(2);
 
     // check ignition and power
     // return -1 for power loss
@@ -711,8 +821,6 @@ char imei[14];
   
 
 
-    // a sleep for 1 seconds
-    sleep(1);
 
     switch(do_function)
     {
@@ -724,13 +832,14 @@ char imei[14];
             break;
 
     case 2:
-            printf("I got hit by a 2 and will send the periodic data on tcp now\n");
-            poll_modbus_data();            
+            printf("I got hit by a 2 and will send the periodic data on tcp now\n");          
+            send_modbus_data();                     
             do_function=0;
             break;
 
     case 3:
-            printf("I got hit by a 3 and this occurs only once an hour\n");
+            printf("I got hit by a 3 and this occurs every 12 hours and resets the time tracker counters to zeros\n");
+            send_heartbeat();
             do_function=0;
             break;
 
@@ -748,11 +857,13 @@ char imei[14];
     
     case 6:
             printf("I got hit by a 6 and this is power loss\n");
+            send_power_loss();
             do_function=0;
             break;
 
     case 7:
             printf("I got hit by a 7 and this is power restore\n");
+            send_power_restore();
             do_function=0;
             break;
 
@@ -769,32 +880,7 @@ char imei[14];
 
 
 
-    
-/*
-  ret = get_gps_time (time, 26);
-    if (ret == 0)
-    {
-        printf (" time %s \n", time);
-    }
 
-    ret = get_gps_latitude (&lat);
-    if (ret == 0)
-    {
-        printf (" get_gps_latitude %d \n", lat);
-    }
-
-    ret = get_gps_longitude (&lon);		  
-    if (ret == 0)
-    {
-        printf (" get_gps_longitude %d \n", lon);
-    }
-
-    ret = get_gps_altitude (&alt);
-    if (ret == 0)
-    {
-        printf (" altitude %d \n", alt);
-    } 
-*/
 
 
  /*   
@@ -804,37 +890,7 @@ char imei[14];
         printf ("printing gps data"); printf (sql_buff);
     }
 
-    for (i = 0; i < 3; i++)
-    {
-        iostate = get_gpio_value (i); printf ("%d : %d \n", i, iostate);
-    }
 
-
-    ret = get_gps_time (time, 26);
-    if (ret == 0)
-    {
-        printf (" time %s \n", time);
-    }
-
-    ret = get_gps_latitude (&lat);
-    if (ret == 0)
-    {
-        printf (" get_gps_latitude %d \n", lat);
-    }
-
-    ret = get_gps_longitude (&lon);		  
-    if (ret == 0)
-    {
-        printf (" get_gps_longitude %d \n", lon);
-    }
-
-    ret = get_gps_altitude (&alt);
-    if (ret == 0)
-    {
-        printf (" altitude %d \n", alt);
-    } 
-
-  
 */
 
 
