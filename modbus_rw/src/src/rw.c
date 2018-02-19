@@ -41,7 +41,7 @@ volatile int hb_tracker_min;
 // keeps track of the status of TCP
 volatile int tcp_status=0;
 
-char imei[14];
+char imei[15];
 char logger_id[20];
 
 
@@ -76,14 +76,14 @@ char protoname[] = "tcp";
     struct hostent *hostent;
     /* This is the struct used by INet addresses. */
     struct sockaddr_in sockaddr_in;
-    //char *server_hostname = "87.201.44.16";
-    char *server_hostname = "80.227.131.54";
+    char *server_hostname = "qaroam3.roamworks.com";
+    //char *server_hostname = "80.227.131.54";
     unsigned short server_port = 6102; 
 
 // below variables are to handle ignition
 int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
 int ign_state=-1; // a state holder where -1 is indeterminant 
-int pwr_state=1;  // a power state holder , we assume it is High on start up
+int pwr_state=-1;  // a power state holder , we assume it is High on start up
 int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
 
 
@@ -118,6 +118,15 @@ int ret;
             pwr_filter=0;
             hodor=1;
         }
+    // set pwr_state to 0 to indicate unit lost power    
+    }
+
+    if ((ret>0)&&(pwr_state==-1))
+    {
+    //confirm power loss and send message  
+        pwr_state=1;
+        do_function=1;
+        hodor=0;
     // set pwr_state to 0 to indicate unit lost power    
     }
     // if ignition is OFF and the current ignition state is ON
@@ -185,7 +194,7 @@ void * thread_func(void *data)
 {
     
 int ret; 
-  printf("reached the thread with data as %s \n",(char *)data);
+  //printf("reached the thread with data as %s \n",(char *)data);
   // calls the send tcp data function by passing a pointer to data string
   ret=send_tcp_data((char *)data);
   if (ret<0)
@@ -201,7 +210,7 @@ pthread_t launch_thread_send_data(void *data)
 {
 
 pthread_t tid;
-    printf("Calling a thread to send data as %s",data);
+    //printf("Calling a thread to send data as %s",data);
     int ret = pthread_create(&tid, NULL, thread_func, (void *)data);
     if (ret != 0) 
     { 
@@ -310,12 +319,12 @@ void sigalrm_handler( int sig )
         time_tracker_min=time_tracker_min+1;
         }
         //every 5 minute we send the periodic report
-        if (time_tracker_min%1==0)
-        {
-        do_function = 1; // every 2 minutes check io lines
-        }
+        //if (time_tracker_min%1==0)
+        //{
+        //do_function = 1; // every 2 minutes check io lines
+        //}
 
-        if ((time_tracker_min%1==0)&&(ign_state==1))
+        if ((time_tracker_min%5==0)&&(ign_state==1))
         {
         do_function = 2; // every 5 minutes send periodic data while ignition on
         }
@@ -363,22 +372,32 @@ void sigalrm_handler( int sig )
     }
     // re run the alarm for every second
     
-
+    //ret=read_tcp_data();
+    
     alarm(1);
 }
 
 // function to read data over tcp
-void read_tcp_data()
+int read_tcp_data()
 {
-    char  read[1024];
-    if( recv(sockfd, read , 2000 , 0) < 0)
-    {
-    printf("recv failed");
-    }
-    printf("Recieved data: %s",read);
-    
-    //perform action with the data
 
+    int ret;    
+    char read_buff[50]="";
+    do
+    {
+        ret=recv(sockfd, read_buff , 50 , MSG_DONTWAIT);
+        if(ret> 0)
+        {
+        printf("Message recieved on TCP with length %d and data: %s\n",ret,read_buff);
+        read_buff[50]="";
+        }
+
+    }
+    while (1);    
+    //perform action with the data
+    ret=0;
+    
+    return ret;
 }
 
 
@@ -399,14 +418,14 @@ int send_tcp_data(void *data)
         //    printf("recv failed");
         //}
         //printf("Recieved reply: %s",this);
-        printf("Sucess\n");
+        printf("Message sent via tcp\n");
     return 0;
 
     }
     else
     {
     return -1;
-    printf("Fail\n");    
+    printf("Message Sending failed\n");    
     }
 
 
@@ -475,7 +494,7 @@ printf("entered polling section for modbus_data\n");
 
 
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
 
 
     //calling send tcp to send the data
@@ -559,32 +578,29 @@ void update_info()
     snprintf(sendtime, sizeof(sendtime), "%s",buff);
     sendtime[strlen(sendtime)] = '\0';
     
-    strftime (buff, sizeof(buff), "%d-%m-%Y", tmp);
+    strftime (buff, sizeof(buff), "%d.%m.%Y", tmp);
     snprintf(date, sizeof(date), "%s",buff);
     date[strlen(date)] = '\0';  
 
     
     // obtain gps info as lat,lon,alt
 
-    printf("assigning lat\n");
     ret = get_gps_latitude (&lat);
-    if (ret == 0)
+    if (ret < 0)
     {
-        printf (" get_gps_latitude %d \n", lat);
-    }
-    
-    printf("assigning lat\n");
-    ret = get_gps_longitude (&lon);		  
-    if (ret == 0)
-    {
-        printf (" get_gps_longitude %d \n", lon);
+        lat=0.0;
     }
 
-    printf("assigning lat\n");
-    ret = get_gps_altitude (&alt);
-    if (ret == 0)
+    ret = get_gps_longitude (&lon);		  
+    if (ret < 0)
     {
-        printf (" altitude %d \n", alt);
+        lon=0.0;
+    }
+
+    ret = get_gps_altitude (&alt);
+    if (ret < 0)
+    {
+        alt=0.0;
     } 
     
 
@@ -595,6 +611,24 @@ void update_info()
 
 
 }
+
+void send_power_up()
+{
+
+    update_info();
+    char pwr_command[1024];
+    printf("sending power up\n");
+
+     // prepare the format of the powerloss message
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
+    pthread_join(thread_id,NULL);
+}
+
 
 void send_power_loss()
 {
@@ -756,7 +790,7 @@ int main (int argc, char *argv[])
 
     //obtain imei number
     ret = get_imei (imei, 15);
-    imei[strlen(imei)-1]='\0';
+
 
 
 
@@ -843,11 +877,11 @@ int main (int argc, char *argv[])
 {
     
 
-
+    
     // DEBUG purpose buff here is to print the time on the console 
-    time_t now = time (0);
-    strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
-    printf ("%s\n", buff);
+    //time_t now = time (0);
+    //strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
+    //printf ("%s\n", buff);
     
     sleep(2);
 
@@ -859,62 +893,66 @@ int main (int argc, char *argv[])
 
 
 
+
     switch(do_function)
     {
 
     case 1:
-            printf("I got hit by a 1 and will check my IO lines now\n");
-            //poll_ioline_state();
+            printf("Power UP\n");
+            send_power_up();
             do_function=0;
             break;
 
     case 2:
-            printf("I got hit by a 2 and will send the periodic data on tcp now\n");          
+            printf("Periodic Report\n");          
             send_modbus_data();                     
             do_function=0;
             break;
 
     case 3:
-            printf("I got hit by a 3 and this occurs every 12 hours and resets the time tracker counters to zeros\n");
+            printf("Heartbeat\n");
             send_heartbeat();
             do_function=0;
             break;
 
     case 4:
-            printf("I got hit by a 4 and this is ignition off\n");
+            printf("Ignition OFF\n");
             send_ignition_off();
             do_function=0;
             break;
 
     case 5:
-            printf("I got hit by a 5 and this is ignition on\n");
+            printf("Ignition ON\n");
             send_ignition_on();
             do_function=0;
             break;
     
     case 6:
-            printf("I got hit by a 6 and this is power loss\n");
+            printf("Power Loss\n");
             send_power_loss();
             do_function=0;
             break;
 
     case 7:
-            printf("I got hit by a 7 and this is power restore\n");
+            printf("Power Restore\n");
             send_power_restore();
             do_function=0;
             break;
 
     default:
+
             break;
     }
 
 
 }
     while (!reboot);
+
     ret = shutdown(sockfd, SHUT_WR);
     printf (" %d is the return for shutdown \n",ret);
     ret= close(sockfd);
     printf (" %d is the return for close \n",ret);
+
    
     exit(0);
     return 0;}
