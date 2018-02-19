@@ -41,9 +41,44 @@ volatile int hb_tracker_min;
 // keeps track of the status of TCP
 volatile int tcp_status=0;
 
+char imei[14];
+char logger_id[20];
+
+
+int fix=1,course=0,speed=0,power,in7,bat,dop=0,satsused=0;
+int REG0=0,REG1=0,REG2=0,REG3=0,REG4=0,REG5=0,REG6=0,REG7=0,REG8=0,REG9=0,REG10=0,REG11=0,REG12=0,REG13=0,REG14=0,REG15=0;
+int REG16=0,REG17=0,REG18=0,REG19=0,REG20=0,REG21=0,REG22=0,REG23=0,REG24=0,REG25=0;
+char sendtime[10]="",date[11]="";
+double lat=0.0,lon=0.0,alt=0.0;
+char  datatosend[1024];
+char buff[100]; 
+
+int ret = -1, i;
+double size, lat, lon, alt;
+char timestamp[26];
+size_t timer1; 
+int res,ret1;
+char this[1024];
+int data_length;
+char buff[100]; 
+
 int hodor=1;
 
 char* temp_buff;
+
+char protoname[] = "tcp";
+    struct protoent *protoent;
+    int ret;
+    in_addr_t in_addr;
+    in_addr_t server_addr;
+    int sockfd;
+
+    struct hostent *hostent;
+    /* This is the struct used by INet addresses. */
+    struct sockaddr_in sockaddr_in;
+    //char *server_hostname = "87.201.44.16";
+    char *server_hostname = "80.227.131.54";
+    unsigned short server_port = 6102; 
 
 // below variables are to handle ignition
 int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
@@ -59,6 +94,8 @@ timer_t thirdTimerID;
 
 int poll_ioline_state(int);
 int prev_io_state=-1;
+
+void update_info();
 
 // timer functions that will called when a signal is fired based on the respective timer
 void firstCB()
@@ -330,67 +367,26 @@ void sigalrm_handler( int sig )
     alarm(1);
 }
 
+// function to read data over tcp
+void read_tcp_data()
+{
+    char  read[1024];
+    if( recv(sockfd, read , 2000 , 0) < 0)
+    {
+    printf("recv failed");
+    }
+    printf("Recieved data: %s",read);
+    
+    //perform action with the data
+
+}
+
 
 // function to send data over tcp
 int send_tcp_data(void *data)
 {
 
-    char protoname[] = "tcp";
-    struct protoent *protoent;
-    int ret;
-    in_addr_t in_addr;
-    in_addr_t server_addr;
-    int sockfd;
-
-    struct hostent *hostent;
-    /* This is the struct used by INet addresses. */
-    struct sockaddr_in sockaddr_in;
-    //char *server_hostname = "87.201.44.16";
-    char *server_hostname = "80.227.131.54";
-    unsigned short server_port = 6102; 
-
-
-
-    /* Get socket. */
-    // sets the protocol to TCP
-    protoent = getprotobyname(protoname);
-    if (protoent == NULL) {
-        perror("getprotobyname");
-        exit(EXIT_FAILURE);
-    }
-    sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
-    if (sockfd == -1) {
-        perror("socket");
-        tcp_status=-1;
-        exit(EXIT_FAILURE);
-    }
-
-    /* Prepare sockaddr_in. */
-    // gets ip from a dns
-    hostent = gethostbyname(server_hostname);
-    if (hostent == NULL) {
-        fprintf(stderr, "error: gethostbyname(\"%s\")\n", server_hostname);
-        exit(EXIT_FAILURE);
-    }
-    //sets up address from hostent(reverse ip)
-    in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
-    if (in_addr == (in_addr_t)-1) {
-        fprintf(stderr, "error: inet_addr(\"%s\")\n", *(hostent->h_addr_list));
-        exit(EXIT_FAILURE);
-    }
-    // Define ip and port for the server
-    sockaddr_in.sin_addr.s_addr = in_addr;
-    sockaddr_in.sin_family = AF_INET;
-    sockaddr_in.sin_port = htons(server_port);
-
-    /* Do the actual connection. */
-    if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
-         printf ("Socket creation failed \n");
-         tcp_status=-1;
-    }
-    // for debug only
     
-
 
     ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
@@ -403,16 +399,16 @@ int send_tcp_data(void *data)
         //    printf("recv failed");
         //}
         //printf("Recieved reply: %s",this);
+        printf("Sucess\n");
     return 0;
 
     }
     else
+    {
     return -1;
+    printf("Fail\n");    
+    }
 
-    //ret = shutdown(sockfd, SHUT_WR);
-    //printf (" %d is the return for shutdown \n",ret);
-    //ret= close(sockfd);
-    //printf (" %d is the return for close \n",ret);
 
 
 
@@ -423,8 +419,8 @@ int send_tcp_data(void *data)
 void send_modbus_data()
 {
 
-int ret,i;
-char timestamp[26];
+int ret;
+
 //FILE *in;
 //FILE *grab;
 char* sql_buff;
@@ -432,122 +428,55 @@ char* sql_buff;
 
 int res,ret1;
 
-double value;
+
 
 printf("entered polling section for modbus_data\n");
 
-char datatags[5][5];
 
-    strcpy (datatags[0],"Tag1");
-    strcpy (datatags[1],"Tag2");
-    strcpy (datatags[2],"Tag3");
-    strcpy (datatags[3],"Tag4");
-    strcpy (datatags[4],"Tag5");
+    double value;
+    char timestamp[26];
+
 
 // variables to prepare periodic information 
-
-int fix=1,course=0,speed=0,power,in7,bat,dop=0,satsused=0;
-int REG0=0,REG1=1,REG2=2,REG3=3,REG4=4,REG5=5,REG6=6,REG7=7,REG8=8,REG9=9,REG10=10,REG11=11,REG12=12,REG13=13,REG14=14,REG15=15;
-int REG16=16,REG17=17,REG18=18,REG19=19,REG20=20,REG21=21,REG22=22,REG23=23,REG24=24,REG25=25;
-char sendtime[10]="",date[11]="";
-char imei[14];
-double lat=0.0,lon=0.0,alt=0.0;
-char  datatosend[1024];
-char buff[100]; 
-
-
-power=pwr_state;
-in7=ign_state;
-/*
-  // iterate through the above tags to obtain the value for each of them
-    for (i = 0; i < 5; i++)
-    {
-        printf ("Tag Name = %s", datatags[i]);
-        value = 0;
-        ret = read_tag_latest_data_from_db(datatags[i],"cpanel",1,1,&value,timestamp);  
-        if (ret == 0)
-	    {
-	        printf ("Tag : %lf - %d @ %s \n", value, ret, timestamp);
-
-            // printf ("Attempting to update data\n");
-            // ret1 = update_timestamp_for_tagname(datatags[i],"cpanel",1,temp_buff);  //return 0:success -1:Error
-            //  if (ret1 == 0)
-	        //  {
-            //      printf ("updated timestamp on database %s \n", temp_buff);
-            //      printf ("Attempting to delete from database\n");
-            //      ret = delete_tags_data_from_db ();
-            //      if (ret == 0)
-            //          {
-            //              printf ("Tags deleted from database \n");
-            //          }
-            //   }  
-        }
-        else
-        printf("Could not obtain data \n");
-
-    }
-*/
-
-    //obtain imei number
-    ret = get_imei (imei, 15);
-    imei[strlen(imei)-1]='\0';
-
-    // obtain time and date
-    time_t t;
-    struct tm *tmp;
-    t = time(NULL);
-    tmp = localtime(&t);
-
-    strftime (buff, sizeof(buff), "%H:%M:%S", tmp);
-    snprintf(sendtime, sizeof(sendtime), "%s",buff);
-    sendtime[strlen(sendtime)] = '\0';
-    
-    strftime (buff, sizeof(buff), "%d-%m-%Y", tmp);
-    snprintf(date, sizeof(date), "%s",buff);
-    date[strlen(date)] = '\0';
-
+ 
     //get the modbus data values
-    ret = read_tag_latest_data_from_db("Tag1","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag1","cpanel",1,1,&value,timestamp);    
     REG0=value;
+        if (ret<0)
+    {
+    REG0=0;
+    } 
     ret = read_tag_latest_data_from_db("Tag2","cpanel",1,1,&value,timestamp); 
     REG1=value;
+        if (ret<0)
+    {
+    REG1=0;
+    } 
     ret = read_tag_latest_data_from_db("Tag3","cpanel",1,1,&value,timestamp); 
     REG2=value;
+        if (ret<0)
+    {
+    REG2=0;
+    } 
     ret = read_tag_latest_data_from_db("Tag4","cpanel",1,1,&value,timestamp); 
     REG3=value;
+        if (ret<0)
+    {
+    REG3=0;
+    } 
     ret = read_tag_latest_data_from_db("Tag5","cpanel",1,1,&value,timestamp); 
     REG4=value;
-
-
-
-    ret = get_gps_latitude (&lat);
-    if (ret == 0)
+    if (ret<0)
     {
-        printf (" get_gps_latitude %d \n", lat);
-    }
-
-    ret = get_gps_longitude (&lon);		  
-    if (ret == 0)
-    {
-        printf (" get_gps_longitude %d \n", lon);
-    }
-
-    ret = get_gps_altitude (&alt);
-    if (ret == 0)
-    {
-        printf (" altitude %d \n", alt);
+    REG4=0;
     } 
-    
-    //ret =getgps_data_from_db(1,"/tmp/abc");
 
-    // implement checks to validate the data
+    update_info();
+
 
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "CANP36,%s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
-    //terminate with a NULL
-    datatosend[strlen(datatosend)] = '\0';
-    //DEBUG PURPOSE: show the data that has been sent     
-    printf("%s",datatosend);
+    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+
 
     //calling send tcp to send the data
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
@@ -572,10 +501,10 @@ int powerstate;
 int ignstate;
 
     powerstate=get_gpio_value(30);
-    printf ("IO state for digital input 1 (Power)(internal pin 30) is %d\n", powerstate);
+    //printf ("IO state for digital input 1 (Power)(internal pin 30) is %d\n", powerstate);
 
     ignstate=get_gpio_value(31);
-    printf ("IO state for digital input 2 (Ignition)(internal pin 31) is %d\n", ignstate);
+    //printf ("IO state for digital input 2 (Ignition)(internal pin 31) is %d\n", ignstate);
 
     //iostate=get_gpio_value(32);
     //printf ("IO state for 2 is %d\n", iostate);
@@ -609,45 +538,73 @@ int ignstate;
         return -1;
 }
 
-void send_ignition_on()
+
+
+void update_info()
 {
+    int ret;
+
+    // power and ignition state   
+    power=pwr_state;
+    in7=ign_state;
+
+ 
+   // obtain time and date
+    time_t t;
+    struct tm *tmp;
+    t = time(NULL);
+    tmp = localtime(&t);
+
+    strftime (buff, sizeof(buff), "%H:%M:%S", tmp);
+    snprintf(sendtime, sizeof(sendtime), "%s",buff);
+    sendtime[strlen(sendtime)] = '\0';
+    
+    strftime (buff, sizeof(buff), "%d-%m-%Y", tmp);
+    snprintf(date, sizeof(date), "%s",buff);
+    date[strlen(date)] = '\0';  
+
+    
+    // obtain gps info as lat,lon,alt
+
+    printf("assigning lat\n");
+    ret = get_gps_latitude (&lat);
+    if (ret == 0)
+    {
+        printf (" get_gps_latitude %d \n", lat);
+    }
+    
+    printf("assigning lat\n");
+    ret = get_gps_longitude (&lon);		  
+    if (ret == 0)
+    {
+        printf (" get_gps_longitude %d \n", lon);
+    }
+
+    printf("assigning lat\n");
+    ret = get_gps_altitude (&alt);
+    if (ret == 0)
+    {
+        printf (" altitude %d \n", alt);
+    } 
+    
+
+    
+    //ret =getgps_data_from_db(1,"/tmp/abc");
+
+    // implement checks to validate the data
 
 
-    char ign_command[13];
-    printf("sending ignition on\n");
-
-    snprintf(ign_command, sizeof(ign_command)-1, "Ignition ON");
-
-    //calling send tcp
-
-
-    pthread_t thread_id = launch_thread_send_data((void*)ign_command);
-    pthread_join(thread_id,NULL);
-}
-
-void send_heartbeat()
-{
-
-    char heartbeat_command[13];
-    printf("sending heartbeat\n");
-
-    snprintf(heartbeat_command, sizeof(heartbeat_command)-1, "heartbeat_command");
-
-    //calling send tcp
-
-
-    pthread_t thread_id = launch_thread_send_data((void*)heartbeat_command);
-    pthread_join(thread_id,NULL);
 }
 
 void send_power_loss()
 {
 
-
-    char pwr_command[13];
+    update_info();
+    char pwr_command[1024];
     printf("sending power loss\n");
 
-    snprintf(pwr_command, sizeof(pwr_command)-1, "Power   LOSS");
+     // prepare the format of the powerloss message
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
     //calling send tcp
 
@@ -658,14 +615,20 @@ void send_power_loss()
 
 void send_power_restore()
 {
+  
+    update_info();
+
+    char pwr_command[1024];
+
+   
+
+        // prepare the format of the power restore message
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
 
-    char pwr_command[13];
-    printf("sending power restore\n");
-
-    snprintf(pwr_command, sizeof(pwr_command)-1, "Power RESTORE");
 
     //calling send tcp
+
 
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
@@ -674,18 +637,54 @@ void send_power_restore()
 
 void send_ignition_off()
 {
-    char ign_command[14];
+    update_info();
+    char ign_command[1024];
 
     printf("sending ignition off\n");
 
-
-    snprintf(ign_command, sizeof(ign_command)-1, "Ignition OFF");
+            // prepare the format of the ignition OFF message
+    snprintf(ign_command, sizeof(ign_command), "$IN8L 36 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
 
 
     //calling send tcp
 
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
+    pthread_join(thread_id,NULL);
+}
+
+
+
+void send_ignition_on()
+{
+
+    update_info();
+    char ign_command[1024];
+    printf("sending ignition on\n");
+
+    // prepare the format of the Ignition ON message
+    snprintf(ign_command, sizeof(ign_command), "$IN8H 36 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)ign_command);
+    pthread_join(thread_id,NULL);
+}
+
+void send_heartbeat()
+{
+    update_info();
+
+    char heartbeat_command[1024];
+    printf("sending heartbeat\n");
+
+    snprintf(heartbeat_command, sizeof(heartbeat_command)-1, "$HEA 36 \r");
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)heartbeat_command);
     pthread_join(thread_id,NULL);
 }
 
@@ -696,22 +695,12 @@ void ready_device()
     //for DEBUG purpose only
     //printf("The device has just rebooted \n");  
 int ret;
-char imei[14],logger_id[20];
-    
-    //get the loggerid - this will be from the CSV file uploaded to master_modbus
-    ret = get_loggerid(logger_id); 
 
-    //get the imei
-    ret = get_imei (imei, 15);
+
 
     // to give info to the user on terminal  
     printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s \n", script_ver, imei, logger_id);
-    printf("This release of the script contains the below \n");
-    printf("1. Modularization of the functionality \n");
-    printf("2. Modbus data is now read \n");
-    printf("3. Send data buffer over TCP \n");
-    printf("4. Timers and Signals to control events \n");
-    printf("5. IO lines are now read\n");
+
 
 
 char  datatosend[100];
@@ -723,6 +712,7 @@ char  datatosend[100];
     printf("%s",datatosend);
 
     //calling send tcp
+
 
 
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
@@ -742,7 +732,7 @@ void  INThandler(int sig)
 char  c;
     signal(sig, SIG_IGN);
     printf("Application Closing Gracefully\n");
-char  datatosend[] ="Application Stopped running \n";
+char  datatosend[] ="Application Stopped running \r";
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
     pthread_join(thread_id,NULL);
     //setting reboot to 1 will exit the worker loop
@@ -757,15 +747,69 @@ int main (int argc, char *argv[])
 {
 
 
-int ret = -1, i;
-double size, lat, lon, alt;
-char timestamp[26];
-size_t timer1; 
-int res,ret1;
-char this[1024];
-int data_length;
-char buff[100]; 
-char imei[14];
+
+
+    
+    //get the loggerid - this will be from the CSV file uploaded to master_modbus
+    ret = get_loggerid(logger_id); 
+
+
+    //obtain imei number
+    ret = get_imei (imei, 15);
+    imei[strlen(imei)-1]='\0';
+
+
+
+    /* Get socket. */
+    // sets the protocol to TCP
+    protoent = getprotobyname(protoname);
+    if (protoent == NULL) {
+        perror("getprotobyname");
+        exit(EXIT_FAILURE);
+    }
+    sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
+    if (sockfd == -1) {
+        perror("socket");
+        tcp_status=-1;
+        exit(EXIT_FAILURE);
+    }
+    else
+    printf ("the sock id is %d \n ",sockfd);
+
+    /* Prepare sockaddr_in. */
+    // gets ip from a dns
+    hostent = gethostbyname(server_hostname);
+    if (hostent == NULL) {
+        fprintf(stderr, "error: gethostbyname(\"%s\")\n", server_hostname);
+        exit(EXIT_FAILURE);
+    }
+    //sets up address from hostent(reverse ip)
+    in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
+    if (in_addr == (in_addr_t)-1) {
+        fprintf(stderr, "error: inet_addr(\"%s\")\n", *(hostent->h_addr_list));
+        exit(EXIT_FAILURE);
+    }
+    // Define ip and port for the server
+    sockaddr_in.sin_addr.s_addr = in_addr;
+    sockaddr_in.sin_family = AF_INET;
+    sockaddr_in.sin_port = htons(server_port);
+
+
+        /* Do the actual connection. */
+    if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
+         printf ("Socket creation failed \n");
+         tcp_status=-1;
+    }
+    // open a thread to read the data
+
+    pthread_t tid;
+    printf("Calling a thread to read data");
+    ret = pthread_create(&tid, NULL, read_tcp_data,NULL);
+    if (ret != 0) 
+    { 
+        printf("Error from pthread: %d\n", ret); 
+    }
+
 
 
 
@@ -778,14 +822,7 @@ char imei[14];
     
     //sends the login message
     ready_device();
-    
-    //poll_ioline_state();
 
-
-
-
-
-    
     // to capture the cntrl+c
     signal(SIGINT, INThandler);
 
@@ -874,6 +911,10 @@ char imei[14];
 
 }
     while (!reboot);
+    ret = shutdown(sockfd, SHUT_WR);
+    printf (" %d is the return for shutdown \n",ret);
+    ret= close(sockfd);
+    printf (" %d is the return for close \n",ret);
    
     exit(0);
     return 0;}
