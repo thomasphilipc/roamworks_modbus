@@ -25,7 +25,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.7"
+#define script_ver "v0.1.8"
 
 
 // below int set to 1 will exit out the application
@@ -40,6 +40,9 @@ volatile int time_tracker_sec=0;
 volatile int hb_tracker_min;
 // keeps track of the status of TCP
 volatile int tcp_status=0;
+
+int reporting_rate =5;
+int heartbeat_rate=720;
 
 char imei[15];
 char logger_id[20];
@@ -202,6 +205,7 @@ int ret;
   if (ret<0)
 {
     printf("Message sending failed\n");
+    tcp_status=0;
 }
 
   
@@ -326,12 +330,12 @@ void sigalrm_handler( int sig )
         //do_function = 1; // every 2 minutes check io lines
         //}
 
-        if ((time_tracker_min%5==0)&&(ign_state==1))
+        if ((time_tracker_min%reporting_rate==0)&&(ign_state==1))
         {
         do_function = 2; // every 5 minutes send periodic data while ignition on
         }
 
-        if (hb_tracker_min==720)
+        if (hb_tracker_min==heartbeat_rate)
         {
         do_function = 3;   // send heartbeat
         time_tracker_sec=0;
@@ -374,7 +378,12 @@ void sigalrm_handler( int sig )
     }
     // re run the alarm for every second
     
-    //ret=read_tcp_data();
+    if ((tcp_status<1)&&(hodor==1))
+{
+printf("reconnectin tcp\n");
+tcp_status=connect_tcp();
+hodor=0;
+}
     
     alarm(1);
 }
@@ -391,8 +400,19 @@ void read_tcp_data()
         // no checking done
         read_buff[nread-1]='\0';
         printf("Message recieved on TCP with \nlength %d \n data: %s\n",nread,read_buff);
-        read_buff[0]='\0';
-        send_poll_response();
+        
+
+if (strstr(read_buff, "poll") != NULL) {
+            send_poll_response();
+}
+else if (strstr(read_buff, "heartbeat") != NULL) {
+            send_heartbeat();
+}
+
+
+        
+
+        bzero(read_buff,1024);
         }
 
 
@@ -426,6 +446,7 @@ int send_tcp_data(void *data)
     {
     return -1;
     printf("Message Sending failed\n");    
+    tcp_status=-1;
     }
 
 
@@ -765,9 +786,6 @@ int ret;
 
 
 
-    // to give info to the user on terminal  
-    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s \n", script_ver, imei, logger_id);
-
 
 
 char  datatosend[100];
@@ -788,44 +806,29 @@ char  datatosend[100];
  
 }
 
-
-
-
-
-// function to handle termination of application
-void  INThandler(int sig)
+int check_tcp_status(void)
 {
 
-char  c;
-    signal(sig, SIG_IGN);
-    printf("Application Closing Gracefully\n");
-char  datatosend[] ="Application Stopped running \r";
-    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
-    pthread_join(thread_id,NULL);
-    //setting reboot to 1 will exit the worker loop
-    reboot=1;
+int error = 0;
+socklen_t len = sizeof (error);
+int retval = getsockopt (sockfd, SOL_SOCKET, SO_ERROR, &error, &len);
 
+if (retval != 0) {
+    /* there was a problem getting the error code */
+    fprintf(stderr, "error getting socket error code: %s\n", strerror(retval));
+    return -1;
 }
 
+if (error != 0) {
+    /* socket has a non zero error status */
+    fprintf(stderr, "socket error: %s\n", strerror(error));
+     return -1;
+}
+  return 0;  
+}
 
-// MAIN PROGRAM CALL STARTS BELOW
-
-int main (int argc, char *argv[])
+int connect_tcp(void)
 {
-
-
-
-
-    
-    //get the loggerid - this will be from the CSV file uploaded to master_modbus
-    ret = get_loggerid(logger_id); 
-
-
-    //obtain imei number
-    ret = get_imei (imei, 15);
-
-
-
 
     /* Get socket. */
     // sets the protocol to TCP
@@ -867,18 +870,57 @@ int main (int argc, char *argv[])
          printf ("Socket creation failed \n");
          tcp_status=-1;
     }
-    // open a thread to read the data
+    else
+        tcp_status=1;
+    hodor=0;
+    return tcp_status;
+}
 
-    //pthread_t tid;
-    //printf("Calling a thread to read data");
-    //ret = pthread_create(&tid, NULL, read_tcp_data,NULL);
-    //if (ret != 0) 
-    //{ 
-    //    printf("Error from pthread: %d\n", ret); 
-    //}
+int change_server()
+{
+//            not implemented                                //
+//  char *server_hostname = "qaroam3.roamworks.com";         //
+//  unsigned short server_port = 6102;                       //
+//               for future                                  //
+}
+
+int change_reporting_rates()
+{
+//        not implemented         //
+//     heartbeat_rate variable    //
+//     reporting_rate variable    //
+}
 
 
 
+
+// function to handle termination of application
+void  INThandler(int sig)
+{
+
+char  c;
+    signal(sig, SIG_IGN);
+    printf("Application Closing Gracefully\n");
+char  datatosend[] ="Application Stopped running \r";
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+    //setting reboot to 1 will exit the worker loop
+    reboot=1;
+
+}
+
+
+// MAIN PROGRAM CALL STARTS BELOW
+
+int main (int argc, char *argv[])
+{
+
+    
+    
+    //get the loggerid - this will be from the CSV file uploaded to master_modbus
+    ret = get_loggerid(logger_id); 
+    //obtain imei number
+    ret = get_imei (imei, 15);
 
     // create a signal and assign the alarm handler
     struct sigaction sact;
@@ -886,6 +928,34 @@ int main (int argc, char *argv[])
     sact.sa_flags = 0;
     sact.sa_handler = sigalrm_handler;
     sigaction(SIGALRM, &sact, NULL);
+
+
+    // if 0 is passed as the first argument then points to local
+    if(atoi(argv[1]) == 0 && argc>1)
+    {
+    
+    // to give info to the user on terminal  
+    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to local \n", script_ver, imei, logger_id);
+
+    server_hostname = "80.227.131.54";
+    unsigned short server_port = 6102; 
+    connect_tcp();  
+      
+    
+    }
+
+    else
+    {
+    // if anything else is passed then points to server
+    
+    // to give info to the user on terminal  
+    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
+
+    connect_tcp();   
+    }
+
+
+
     
     //sends the login message
     ready_device();
