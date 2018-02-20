@@ -61,6 +61,7 @@ int res,ret1;
 char this[1024];
 int data_length;
 char buff[100]; 
+    char read_buff[100];
 
 int hodor=1;
 
@@ -181,7 +182,8 @@ int ret;
 
 void secondCB()
 {
-printf( "Function 2 from timer 2 called \n");
+    do_function=9;
+
 }
 
 void thirdCB()
@@ -286,12 +288,12 @@ static int srtSchedule( void )
     int rc1,rc2,rc3;
     rc1 = makeTimer("First Timer", &firstTimerID, 1, 1);
 
-    //rc2 = makeTimer("Second Timer", &secondTimerID, 5, 5);
+    rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);
 
     //rc3 = makeTimer("Third Timer", &thirdTimerID, 10, 10);
 
     //return (rc1+rc2+rc3);
-    return (rc1);
+    return (rc1+rc2);
 }
 
 
@@ -378,27 +380,25 @@ void sigalrm_handler( int sig )
 }
 
 // function to read data over tcp
-int read_tcp_data()
+void read_tcp_data()
 {
+ 
+    int nread;    
 
-    int ret;    
-    char read_buff[50]="";
-    do
-    {
-        ret=recv(sockfd, read_buff , 50 , MSG_DONTWAIT);
-        if(ret> 0)
+        nread=recv(sockfd, read_buff , 1024 ,MSG_DONTWAIT);
+        if(nread>0)
         {
-        printf("Message recieved on TCP with length %d and data: %s\n",ret,read_buff);
-        read_buff[50]="";
+        // no checking done
+        read_buff[nread-1]='\0';
+        printf("Message recieved on TCP with \nlength %d \n data: %s\n",nread,read_buff);
+        read_buff[0]='\0';
+        send_poll_response();
         }
 
-    }
-    while (1);    
-    //perform action with the data
-    ret=0;
-    
-    return ret;
+
+
 }
+
 
 
 // function to send data over tcp
@@ -612,6 +612,23 @@ void update_info()
 
 }
 
+void send_poll_response()
+{
+
+    update_info();
+    char poll_command[1024];
+    printf("sending poll resp\n");
+
+     // prepare the format of the powerloss message
+    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)poll_command);
+    pthread_join(thread_id,NULL);
+}
+
 void send_power_up()
 {
 
@@ -703,6 +720,22 @@ void send_ignition_on()
 
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
+    pthread_join(thread_id,NULL);
+}
+
+void send_poll_ack()
+{
+    
+
+    char poll_ack_command[3];
+    printf("sending poll ack\n");
+
+    snprintf(poll_ack_command, sizeof(poll_ack_command)-1, "\r");
+
+    //calling send tcp
+
+
+    pthread_t thread_id = launch_thread_send_data((void*)poll_ack_command);
     pthread_join(thread_id,NULL);
 }
 
@@ -836,13 +869,13 @@ int main (int argc, char *argv[])
     }
     // open a thread to read the data
 
-    pthread_t tid;
-    printf("Calling a thread to read data");
-    ret = pthread_create(&tid, NULL, read_tcp_data,NULL);
-    if (ret != 0) 
-    { 
-        printf("Error from pthread: %d\n", ret); 
-    }
+    //pthread_t tid;
+    //printf("Calling a thread to read data");
+    //ret = pthread_create(&tid, NULL, read_tcp_data,NULL);
+    //if (ret != 0) 
+    //{ 
+    //    printf("Error from pthread: %d\n", ret); 
+    //}
 
 
 
@@ -864,7 +897,7 @@ int main (int argc, char *argv[])
     ret=srtSchedule();
     if (ret==0)
     {
-    printf("THE AUXILLARY TIMERS HAVE STARTED");
+    printf("THE AUXILLARY TIMERS HAVE STARTED\n");
     }
     
     alarm(1);  /* Request SIGALRM each second*/
@@ -936,6 +969,18 @@ int main (int argc, char *argv[])
     case 7:
             printf("Power Restore\n");
             send_power_restore();
+            do_function=0;
+            break;
+    
+    case 8:
+            printf("Poll Response\n");
+            send_poll_response();
+            do_function=0;
+            break;
+
+    case 9:
+            printf("checking for incoming messages\n");
+            read_tcp_data();
             do_function=0;
             break;
 
