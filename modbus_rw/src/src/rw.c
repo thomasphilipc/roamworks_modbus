@@ -1,18 +1,33 @@
+/////////////////////////////////////////
+/////////////////////////////////////////
+//                                     //
+//  ROAMWORKS MODBUS - MAESTRO Eseries //
+//  application name : modbus_rw       //
+//  applicaiton version: 0.1.9         //
+//  updated last 21/02/18 : 12:56 PM   //
+//  thomas.philip@roamworks.com        //
+//                                     //
+/////////////////////////////////////////
+/////////////////////////////////////////
+
+
+
+
+
+
 #include <stdio.h>
-
 #include <string.h>
-
 #include <unistd.h>
 
-#include <curl/curl.h> // not required 
-
+//used of modbus master
 #include "database.h"
 #include "generic_info.h"
 
+// used for alarms and signals
 #include <signal.h>
 #include <time.h>
 
-#include <pthread.h> // not used
+#include <pthread.h> // used for threading
 
 
 //below are libs for sockets
@@ -25,7 +40,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.8"
+#define script_ver "v0.1.9"
 
 
 // below int set to 1 will exit out the application
@@ -40,49 +55,45 @@ volatile int time_tracker_sec=0;
 volatile int hb_tracker_min;
 // keeps track of the status of TCP
 volatile int tcp_status=0;
-
+//keeps track of count of failed messages
+int failed_msgs=1;
+// the reporting rate and heartbeat rate is set as a variable to allow future usage in changing them OTA
 int reporting_rate =5;
 int heartbeat_rate=720;
-
+// the below parameters are expected to be static and would not change after configuration
 char imei[15];
 char logger_id[20];
 
-
-int fix=1,course=0,speed=0,power,in7,bat,dop=0,satsused=0;
-int REG0=0,REG1=0,REG2=0,REG3=0,REG4=0,REG5=0,REG6=0,REG7=0,REG8=0,REG9=0,REG10=0,REG11=0,REG12=0,REG13=0,REG14=0,REG15=0;
-int REG16=0,REG17=0,REG18=0,REG19=0,REG20=0,REG21=0,REG22=0,REG23=0,REG24=0,REG25=0;
+// the below parameters are the content that will be on the reports send
+int fix=0,course=-1,speed=-1,power,in7,bat=-1,dop=-1,satsused=-1;
+int REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
+int REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
-char  datatosend[1024];
-char buff[100]; 
-
-int ret = -1, i;
-double size, lat, lon, alt;
+//below are various buffers used for read write and db polling
+char  datatosend[1024]; // write
+char buff[100];         // time
+char read_buff[100];    // read
+// below variable are to handle fucntion responses
+int ret = -1, i, res,ret1;
+// holds the timestamps
 char timestamp[26];
-size_t timer1; 
-int res,ret1;
-char this[1024];
-int data_length;
-char buff[100]; 
-    char read_buff[100];
-
+// below flag is to handle tranistion changes
 int hodor=1;
 
-char* temp_buff;
 
 char protoname[] = "tcp";
-    struct protoent *protoent;
-    int ret;
-    in_addr_t in_addr;
-    in_addr_t server_addr;
-    int sockfd;
+struct protoent *protoent;
+in_addr_t in_addr;
+in_addr_t server_addr;
+int sockfd;
 
-    struct hostent *hostent;
-    /* This is the struct used by INet addresses. */
-    struct sockaddr_in sockaddr_in;
-    char *server_hostname = "qaroam3.roamworks.com";
-    //char *server_hostname = "80.227.131.54";
-    unsigned short server_port = 6102; 
+struct hostent *hostent;
+/* This is the struct used by INet addresses. */
+struct sockaddr_in sockaddr_in;
+// defaulted server name and port setting
+char *server_hostname = "qaroam3.roamworks.com";
+unsigned short server_port = 6102; 
 
 // below variables are to handle ignition
 int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
@@ -96,10 +107,17 @@ timer_t firstTimerID;
 timer_t secondTimerID;
 timer_t thirdTimerID;
 
+// declaration of function and variable necessary for ioline checks
 int poll_ioline_state(int);
 int prev_io_state=-1;
 
+// declaration of functions
 void update_info();
+void send_tcp_data(void *data);
+void send_poll_response();
+void send_heartbeat();
+void removeSubstring(char *s,const char *toremove);
+void ready_device();
 
 // timer functions that will called when a signal is fired based on the respective timer
 void firstCB()
@@ -161,15 +179,19 @@ int ret;
     }
 
 // to reset filtering on spikes
+
+// if ignition is high and iostate ign high then reset filter
     if ((ign_state==1)&&(ret==2))
 {
     ign_filter=0;
 }
+// if ignition is low and iostate ign is low reset filter
     if ((ign_state==0)&&(ret==1))
 {
     ign_filter=0;
 }
 
+// i fpower state is high and power line is high reset filter and vice versa
     if ((pwr_state==1)&&(ret>0))
 {
     pwr_filter=0;
@@ -183,41 +205,28 @@ int ret;
     prev_io_state=ret;
 }
 
+
+// to handle read tcp every 30 seconds
 void secondCB()
 {
     do_function=9;
 
 }
 
-void thirdCB()
-{
-printf( "Function 3 from timer 3 called \n");
-}
+// not used
+//void thirdCB()
+//{
+//printf( "Function 3 from timer 3 called \n");
+//}
 
-// a threaded function to manage on seperate thread. left unused for now - will incorporate for sending data or polling database
-void * thread_func(void *data) 
-{
-    
-int ret; 
-  //printf("reached the thread with data as %s \n",(char *)data);
-  // calls the send tcp data function by passing a pointer to data string
-  ret=send_tcp_data((char *)data);
-  if (ret<0)
-{
-    printf("Message sending failed\n");
-    tcp_status=0;
-}
 
-  
-
-}
-
+// function to launch the send tcp in a thread
 pthread_t launch_thread_send_data(void *data)
 {
 
 pthread_t tid;
     //printf("Calling a thread to send data as %s",data);
-    int ret = pthread_create(&tid, NULL, thread_func, (void *)data);
+    ret = pthread_create(&tid, NULL, send_tcp_data, (void *)data);
     if (ret != 0) 
     { 
         printf("Error from pthread: %d\n", ret); 
@@ -228,7 +237,7 @@ pthread_t tid;
 }
 
 
-// function to handle events raised by the timer signals
+// function to identify and handle events raised by the timer signals
 static void timerHandler( int sig, siginfo_t *si, void *uc )
 {
     // tidp is stored with the name of the timer that raised the signal
@@ -241,9 +250,9 @@ static void timerHandler( int sig, siginfo_t *si, void *uc )
     else if ( *tidp == secondTimerID )
     // if signal originated by second timer then call function secondCB()
         secondCB();
-    else if ( *tidp == thirdTimerID )
+    //else if ( *tidp == thirdTimerID )
     // if signal originated by third timer then call function thirdCB()
-        thirdCB();
+    //  thirdCB();
 }
 
 // function to make timers and assign the signals with the timer expires ; returns 0 on success and -1 on failure
@@ -290,9 +299,9 @@ static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
 static int srtSchedule( void )
 {
     int rc1,rc2,rc3;
-    rc1 = makeTimer("First Timer", &firstTimerID, 1, 1);
+    rc1 = makeTimer("First Timer", &firstTimerID, 1, 1);       // checks io line state every second for changes
 
-    rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);
+    rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);   // defined to read tcp for new data every 30 seconds
 
     //rc3 = makeTimer("Third Timer", &thirdTimerID, 10, 10);
 
@@ -318,72 +327,69 @@ void sigalrm_handler( int sig )
 
         if (ign_state<1)
         {
-        time_tracker_min=0;
+            time_tracker_min=0;
         }
         else
         {
-        time_tracker_min=time_tracker_min+1;
+            time_tracker_min=time_tracker_min+1;
         }
         //every 5 minute we send the periodic report
-        //if (time_tracker_min%1==0)
-        //{
-        //do_function = 1; // every 2 minutes check io lines
-        //}
-
         if ((time_tracker_min%reporting_rate==0)&&(ign_state==1))
         {
-        do_function = 2; // every 5 minutes send periodic data while ignition on
+            do_function = 2; // every 5 minutes send periodic data while ignition on
         }
 
         if (hb_tracker_min==heartbeat_rate)
         {
-        do_function = 3;   // send heartbeat
-        time_tracker_sec=0;
-        hb_tracker_min=0;
+            do_function = 3;   // send heartbeat
+            time_tracker_sec=0;
+            hb_tracker_min=0;
         }
     }
 
     //below functions should be fired right away when a change in state occurs
     if ((ign_state==0)&&(hodor==1))
     { 
-    do_function=4; 
-    //ignition off
-    hodor=0;
+        do_function=4; 
+        //ignition off
+        hodor=0;
     }
 
     if ((pwr_state==0)&&(hodor==1))
     { 
-    do_function=6; 
-    //power loss
-    hodor=0;
+        do_function=6; 
+        //power loss
+        hodor=0;
     }
 
 
     if ((ign_state==1)&&(hodor==1))
     { 
-    do_function=5;
-    // ignition on
-    time_tracker_sec=0;
-    time_tracker_min=0;
-    hodor=0;
+        do_function=5;
+        // ignition on
+        time_tracker_sec=0;
+        time_tracker_min=0;
+        hodor=0;
     }
 
 
 
     if ((pwr_state==1)&&(hodor==1))
     { 
-    do_function=7; 
-    //power restore
-    hodor=0;
+        do_function=7; 
+        //power restore
+        hodor=0;
     }
     // re run the alarm for every second
     
-    if ((tcp_status<1)&&(hodor==1))
-{
-printf("reconnectin tcp\n");
-tcp_status=connect_tcp();
-hodor=0;
-}
+    if ((tcp_status<1)&&(hodor=1))
+    {
+        // a tcp connection was lost then the device restablishes the connection
+        printf("reconnectin tcp\n");
+        tcp_status=connect_tcp();
+        ready_device();
+        hodor=0;
+    }
     
     alarm(1);
 }
@@ -391,67 +397,59 @@ hodor=0;
 // function to read data over tcp
 void read_tcp_data()
 {
- 
-    int nread;    
 
-        nread=recv(sockfd, read_buff , 1024 ,MSG_DONTWAIT);
-        if(nread>0)
-        {
-        // no checking done
+    int nread;    
+    nread=recv(sockfd, read_buff , 1024 ,MSG_DONTWAIT);
+    if(nread>0)
+    {
+        // the read data is checked for certain " words and a response is generated  if poll is there a poll is send if heartbeat then a heartbeat is send
         read_buff[nread-1]='\0';
         printf("Message recieved on TCP with \nlength %d \n data: %s\n",nread,read_buff);
-        
 
-if (strstr(read_buff, "poll") != NULL) {
+        if (strstr(read_buff, "poll") != NULL) 
+        {
             send_poll_response();
-}
-else if (strstr(read_buff, "heartbeat") != NULL) {
+        }
+        else if (strstr(read_buff, "heartbeat") != NULL) 
+        {
             send_heartbeat();
-}
-
-
-        
-
-        bzero(read_buff,1024);
         }
 
-
-
+        bzero(read_buff,1024);
+    }
 }
 
 
 
 // function to send data over tcp
-int send_tcp_data(void *data)
-{
+void send_tcp_data(void *data)
+{   
 
-    
+    // call remove substring to remove -1 which indicates values not avaialable
+    removeSubstring(data,"-1");    
 
     ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
 
     if (ret == (strlen(data)))
     {
-        // check for response from server and print response will require business logic implementation 
-        //if( recv(sockfd, this , 2000 , 0) < 0)
-        //{
-        //    printf("recv failed");
-        //}
-        //printf("Recieved reply: %s",this);
-        printf("Message sent via tcp\n");
-    return 0;
 
+        printf("Message sent via tcp\n");
     }
     else
     {
-    return -1;
-    printf("Message Sending failed\n");    
-    tcp_status=-1;
+        printf("%d count of Message Sending failed\n",failed_msgs);    
+        failed_msgs++;    
+        tcp_status=-1;
+        hodor=1;
     }
+}
 
-
-
-
+// function to remove Not Available values
+void removeSubstring(char *s,const char *toremove)
+{
+  while( s=strstr(s,toremove) )
+    memmove(s,s+strlen(toremove),1+strlen(s+strlen(toremove)));
 }
 
 
@@ -461,9 +459,7 @@ void send_modbus_data()
 
 int ret;
 
-//FILE *in;
-//FILE *grab;
-char* sql_buff;
+
 
 
 int res,ret1;
@@ -479,50 +475,45 @@ printf("entered polling section for modbus_data\n");
 
 // variables to prepare periodic information 
  
-    //get the modbus data values
+    //get the modbus data values and set to -1 if not available
     ret = read_tag_latest_data_from_db("Tag1","cpanel",1,1,&value,timestamp);    
     REG0=value;
-        if (ret<0)
+    if (ret<0)
     {
-    REG0=0;
+        REG0=-1;
     } 
     ret = read_tag_latest_data_from_db("Tag2","cpanel",1,1,&value,timestamp); 
     REG1=value;
-        if (ret<0)
+    if (ret<0)
     {
-    REG1=0;
+        REG1=-1;
     } 
     ret = read_tag_latest_data_from_db("Tag3","cpanel",1,1,&value,timestamp); 
     REG2=value;
-        if (ret<0)
+    if (ret<0)
     {
-    REG2=0;
+        REG2=-1;
     } 
     ret = read_tag_latest_data_from_db("Tag4","cpanel",1,1,&value,timestamp); 
     REG3=value;
-        if (ret<0)
+    if (ret<0)
     {
-    REG3=0;
+        REG3=-1;
     } 
     ret = read_tag_latest_data_from_db("Tag5","cpanel",1,1,&value,timestamp); 
     REG4=value;
     if (ret<0)
     {
-    REG4=0;
+        REG4=-1;
     } 
 
     update_info();
-
-
     // prepare the format of the periodic CAN message
     snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
-
 
     //calling send tcp to send the data
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
     pthread_join(thread_id,NULL);
-
-
 
 }
 
@@ -530,8 +521,6 @@ printf("entered polling section for modbus_data\n");
 int poll_ioline_state(int prev_io_state)
 {
 
-    // for Debug purpose only
-    //printf("entered polling section for iolines state\n");
     // return -1 for power loss
     // return 0 for ignition off
     //  return 1 for ignition on
@@ -579,7 +568,7 @@ int ignstate;
 }
 
 
-
+// function to update the basic information time and gps info
 void update_info()
 {
     int ret;
@@ -610,6 +599,7 @@ void update_info()
     if (ret < 0)
     {
         lat=0.0;
+        fix=0
     }
 
     ret = get_gps_longitude (&lon);		  
@@ -623,103 +613,81 @@ void update_info()
     {
         alt=0.0;
     } 
-    
 
-    
-    //ret =getgps_data_from_db(1,"/tmp/abc");
-
-    // implement checks to validate the data
 
 
 }
 
+// function to send poll response
 void send_poll_response()
 {
-
     update_info();
+
     char poll_command[1024];
     printf("sending poll resp\n");
 
      // prepare the format of the powerloss message
     snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
-    //calling send tcp
-
-
     pthread_t thread_id = launch_thread_send_data((void*)poll_command);
     pthread_join(thread_id,NULL);
 }
 
+// function to send power up
 void send_power_up()
 {
-
     update_info();
+    
     char pwr_command[1024];
     printf("sending power up\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
-
-    //calling send tcp
-
-
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 0 %s,%s,%s,%f,%f,%d,,,,%d,,-1,-1,-1,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
 }
 
-
+// function to send power loss
 void send_power_loss()
 {
-
     update_info();
+    
     char pwr_command[1024];
     printf("sending power loss\n");
 
      // prepare the format of the powerloss message
     snprintf(pwr_command, sizeof(pwr_command), "$PWRL 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
-    //calling send tcp
-
-
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
 }
 
+// function to send power restore
 void send_power_restore()
 {
   
     update_info();
 
     char pwr_command[1024];
-
-   
-
-        // prepare the format of the power restore message
+    // prepare the format of the power restore message
     snprintf(pwr_command, sizeof(pwr_command), "$PWRR 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
-
-
-
-    //calling send tcp
-
-
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
 }
 
+// function to send ignition off
 void send_ignition_off()
 {
     update_info();
+    
     char ign_command[1024];
 
     printf("sending ignition off\n");
 
             // prepare the format of the ignition OFF message
     snprintf(ign_command, sizeof(ign_command), "$IN8L 36 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
-
-
-    //calling send tcp
-
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -731,35 +699,18 @@ void send_ignition_on()
 {
 
     update_info();
+
     char ign_command[1024];
     printf("sending ignition on\n");
 
     // prepare the format of the Ignition ON message
     snprintf(ign_command, sizeof(ign_command), "$IN8H 36 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
 
-    //calling send tcp
-
-
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
 }
 
-void send_poll_ack()
-{
-    
-
-    char poll_ack_command[3];
-    printf("sending poll ack\n");
-
-    snprintf(poll_ack_command, sizeof(poll_ack_command)-1, "\r");
-
-    //calling send tcp
-
-
-    pthread_t thread_id = launch_thread_send_data((void*)poll_ack_command);
-    pthread_join(thread_id,NULL);
-}
-
+// function to send heartbeat
 void send_heartbeat()
 {
     update_info();
@@ -768,9 +719,6 @@ void send_heartbeat()
     printf("sending heartbeat\n");
 
     snprintf(heartbeat_command, sizeof(heartbeat_command)-1, "$HEA 36 \r");
-
-    //calling send tcp
-
 
     pthread_t thread_id = launch_thread_send_data((void*)heartbeat_command);
     pthread_join(thread_id,NULL);
@@ -782,30 +730,20 @@ void ready_device()
  
     //for DEBUG purpose only
     //printf("The device has just rebooted \n");  
-int ret;
+    int ret;
 
-
-
-
-
-char  datatosend[100];
-
-
+    char  datatosend[100];
 
     snprintf(datatosend, sizeof(datatosend), "$<MSG.Info.ServerLogin>\r$IMEI=%s\r$SUCCESS\r$<end>\r",imei);
     datatosend[strlen(datatosend)] = '\0';
     printf("%s",datatosend);
 
-    //calling send tcp
-
-
-
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
     pthread_join(thread_id,NULL);
-
  
 }
 
+// function to check tcp status
 int check_tcp_status(void)
 {
 
@@ -827,6 +765,7 @@ if (error != 0) {
   return 0;  
 }
 
+// function to establist tcp connection
 int connect_tcp(void)
 {
 
@@ -930,32 +869,25 @@ int main (int argc, char *argv[])
     sigaction(SIGALRM, &sact, NULL);
 
 
-    // if 0 is passed as the first argument then points to local
-    if(atoi(argv[1]) == 0 && argc>1)
+    // if any argument is passed then points to local
+    if(argc>1)
     {
-    
-    // to give info to the user on terminal  
-    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to local \n", script_ver, imei, logger_id);
+        // to give info to the user on terminal  
+        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to local \n", script_ver, imei, logger_id);
 
-    server_hostname = "80.227.131.54";
-    unsigned short server_port = 6102; 
-    connect_tcp();  
-      
-    
+        server_hostname = "80.227.131.54";
+        unsigned short server_port = 6102; 
+        // conncect tcp
+        connect_tcp();  
     }
 
     else
     {
-    // if anything else is passed then points to server
-    
-    // to give info to the user on terminal  
-    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
-
-    connect_tcp();   
+        // if anything else is passed then points to server 
+        // to give info to the user on terminal  
+        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
+        connect_tcp();   
     }
-
-
-
     
     //sends the login message
     ready_device();
@@ -977,10 +909,7 @@ int main (int argc, char *argv[])
 
 // Below is the main loop that will run the business logic
     do
-{
-    
-
-    
+{ 
     // DEBUG purpose buff here is to print the time on the console 
     //time_t now = time (0);
     //strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
@@ -992,10 +921,6 @@ int main (int argc, char *argv[])
     // return -1 for power loss
     // return 0 for ignition off
     //  return 1 for ignition on
-  
-
-
-
 
     switch(do_function)
     {
@@ -1070,24 +995,10 @@ int main (int argc, char *argv[])
 
    
     exit(0);
-    return 0;}
+    return 0;
+}
 
-
-
-
-
-
- /*   
-    ret = getgps_data_from_db (1, sql_buff);
-    if (ret == 0)
-    {
-        printf ("printing gps data"); printf (sql_buff);
-    }
-
-
-*/
-
-
-
+//// ignore below ////
+// documentation to be created //
 
 
