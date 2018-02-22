@@ -17,7 +17,7 @@ Functionality
 
 Installation
 
-Below are the dependencies for the application
+Dependencies
 Modbusmaster_V3.2  (3.2.5)
 libgeneric_apis_2.1  (2.1)
 
@@ -30,7 +30,8 @@ Steps
 6) Install Libgeneric_apis
 7) Enable the reporting agents, gps , serial 
 8) Upload the modbusmaster config csv and enable
-9) Update the init.d  file restart applciation on reboot
+9) Load and install the modbus_rw and install with --nodeps 
+10) Update the init.d  file restart applciation on reboot
 
 Application Logic 
 
@@ -39,7 +40,25 @@ A primary recurring 1 second alarm/timer is run to monitor change in states and 
 There are some auxillary timers/alarms that control the reading from tcp line at every 30 seconds and monitor IO lines for changes every second
 
 
+Task to do
+
+Delete database periodically to control usage 
+    ? When to delete - after every week 
+Controlled restart of the application every week 
+
 Known Issues/ Limitations
-If a TCP connection is lost, the device will attempt to reconnect tcp indefintely 
+
+If a TCP connection is lost, the device will attempt to reconnect tcp and has no managed method of trying
 The device does not maintain its previous states on power loss
 If Internet is not available there is no fallback
+
+Future Enhancements
+
+Change Reporting Rate and Heartbeat interval OTA
+Save states on device in case or restart
+Add SMS Fallback
+Build and Engineering interface
+Log information and make this available
+Monitor App crash 
+Forward modbus writing using Modbus TCP
+

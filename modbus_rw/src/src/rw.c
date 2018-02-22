@@ -720,7 +720,7 @@ void update_info(void)
     if (ret < 0)
     {
         lat=0.0;
-        fix=0
+        fix=0;
     }
 
     ret = get_gps_longitude (&lon);		  
@@ -974,7 +974,9 @@ char  datatosend[] ="Application Stopped running \r";
 
 int main (int argc, char *argv[])
 {
-
+    printf("Initialization in process \n");    
+    // sleep to wait for initialisation
+    sleep(10);
     
     
     //get the loggerid - this will be from the CSV file uploaded to master_modbus
