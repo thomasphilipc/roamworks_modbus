@@ -67,7 +67,7 @@ char logger_id[20];
 // the below parameters are the content that will be on the reports send
 int fix=0,course=-1,speed=-1,power,in7,bat=-1,dop=-1,satsused=-1;
 int REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
-int REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1;
+int REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1;REG26=-1,REG27=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
 //below are various buffers used for read write and db polling
@@ -484,161 +484,173 @@ printf("entered polling section for modbus_data\n");
 // variables to prepare periodic information 
  
     //get the modbus data values and set to -1 if not available
-    ret = read_tag_latest_data_from_db("Tag1","cpanel",1,1,&value,timestamp);    
+    ret = read_tag_latest_data_from_db("Tag1","DSEPANEL",1,1,&value,timestamp);    
     REG0=value;
     if (ret<0)
     {
         REG0=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag2","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag2","DSEPANEL",1,1,&value,timestamp); 
     REG1=value;
     if (ret<0)
     {
         REG1=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag3","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",3,1,&value,timestamp); 
     REG2=value;
     if (ret<0)
     {
         REG2=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag4","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",4,1,&value,timestamp); 
     REG3=value;
     if (ret<0)
     {
         REG3=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag5","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",4,1,&value,timestamp); 
     REG4=value;
     if (ret<0)
     {
         REG4=-1;
     }
-   ret = read_tag_latest_data_from_db("Tag6","cpanel",1,1,&value,timestamp); 
+   ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",4,1,&value,timestamp); 
     REG5=value;
     if (ret<0)
     {
         REG5=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag7","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&value,timestamp); 
     REG6=value;
     if (ret<0)
     {
         REG6=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag8","cpanel",1,1,&value,timestamp);    
+    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&value,timestamp);    
     REG7=value;
     if (ret<0)
     {
         REG7=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag9","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&value,timestamp); 
     REG8=value;
     if (ret<0)
     {
         REG8=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag10","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",1,1,&value,timestamp); 
     REG9=value;
     if (ret<0)
     {
         REG9=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag11","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&value,timestamp); 
     REG10=value;
     if (ret<0)
     {
         REG10=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag12","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&value,timestamp); 
     REG11=value;
     if (ret<0)
     {
         REG11=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag13","cpanel",1,1,&value,timestamp);    
+        ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&value,timestamp);    
     REG12=value;
     if (ret<0)
     {
         REG12=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag14","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",1,1,&value,timestamp); 
     REG13=value;
     if (ret<0)
     {
         REG13=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag15","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&value,timestamp); 
     REG14=value;
     if (ret<0)
     {
         REG14=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag16","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&value,timestamp); 
     REG15=value;
     if (ret<0)
     {
         REG15=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag17","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&value,timestamp); 
     REG16=value;
     if (ret<0)
     {
         REG16=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag18","cpanel",1,1,&value,timestamp);    
+        ret = read_tag_latest_data_from_db("Tag18","DSEPANEL",1,1,&value,timestamp);    
     REG17=value;
     if (ret<0)
     {
         REG17=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag19","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",7,1,&value,timestamp); 
     REG18=value;
     if (ret<0)
     {
         REG18=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag20","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&value,timestamp); 
     REG19=value;
     if (ret<0)
     {
         REG19=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag21","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",5,1,&value,timestamp); 
     REG20=value;
     if (ret<0)
     {
         REG20=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag22","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&value,timestamp); 
     REG21=value;
     if (ret<0)
     {
         REG21=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag23","cpanel",1,1,&value,timestamp);    
+        ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",6,1,&value,timestamp);    
     REG22=value;
     if (ret<0)
     {
         REG22=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag24","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",2,1,&value,timestamp); 
     REG23=value;
     if (ret<0)
     {
         REG23=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag25","cpanel",1,1,&value,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",7,1,&value,timestamp); 
     REG24=value;
     if (ret<0)
     {
         REG24=-1;
     } 
+    ret = read_tag_latest_data_from_db("Tag26","DSEPANEL",8,1,&value,timestamp); 
+    REG25=value;
+    if (ret<0)
+    {
+        REG25=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag27","DSEPANEL",8,1,&value,timestamp); 
+    REG26=value;
+    if (ret<0)
+    {
+        REG26=-1;
+    } 
 
 
     update_info();
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24,REG25,REG26);
 
     //calling send tcp to send the data
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
