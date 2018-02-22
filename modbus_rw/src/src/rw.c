@@ -395,7 +395,7 @@ void sigalrm_handler( int sig )
 }
 
 // function to read data over tcp
-void read_tcp_data()
+void read_tcp_data(void)
 {
 
     int nread;    
@@ -454,7 +454,7 @@ void removeSubstring(char *s,const char *toremove)
 
 
 // function to poll modbus data
-void send_modbus_data()
+void send_modbus_data(void)
 {
 
 int ret;
@@ -505,11 +505,132 @@ printf("entered polling section for modbus_data\n");
     if (ret<0)
     {
         REG4=-1;
+    }
+   ret = read_tag_latest_data_from_db("Tag6","cpanel",1,1,&value,timestamp); 
+    REG5=value;
+    if (ret<0)
+    {
+        REG5=-1;
     } 
+    ret = read_tag_latest_data_from_db("Tag7","cpanel",1,1,&value,timestamp); 
+    REG6=value;
+    if (ret<0)
+    {
+        REG6=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag8","cpanel",1,1,&value,timestamp);    
+    REG7=value;
+    if (ret<0)
+    {
+        REG7=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag9","cpanel",1,1,&value,timestamp); 
+    REG8=value;
+    if (ret<0)
+    {
+        REG8=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag10","cpanel",1,1,&value,timestamp); 
+    REG9=value;
+    if (ret<0)
+    {
+        REG9=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag11","cpanel",1,1,&value,timestamp); 
+    REG10=value;
+    if (ret<0)
+    {
+        REG10=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag12","cpanel",1,1,&value,timestamp); 
+    REG11=value;
+    if (ret<0)
+    {
+        REG11=-1;
+    } 
+        ret = read_tag_latest_data_from_db("Tag13","cpanel",1,1,&value,timestamp);    
+    REG12=value;
+    if (ret<0)
+    {
+        REG12=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag14","cpanel",1,1,&value,timestamp); 
+    REG13=value;
+    if (ret<0)
+    {
+        REG13=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag15","cpanel",1,1,&value,timestamp); 
+    REG14=value;
+    if (ret<0)
+    {
+        REG14=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag16","cpanel",1,1,&value,timestamp); 
+    REG15=value;
+    if (ret<0)
+    {
+        REG15=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag17","cpanel",1,1,&value,timestamp); 
+    REG16=value;
+    if (ret<0)
+    {
+        REG16=-1;
+    } 
+        ret = read_tag_latest_data_from_db("Tag18","cpanel",1,1,&value,timestamp);    
+    REG17=value;
+    if (ret<0)
+    {
+        REG17=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag19","cpanel",1,1,&value,timestamp); 
+    REG18=value;
+    if (ret<0)
+    {
+        REG18=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag20","cpanel",1,1,&value,timestamp); 
+    REG19=value;
+    if (ret<0)
+    {
+        REG19=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag21","cpanel",1,1,&value,timestamp); 
+    REG20=value;
+    if (ret<0)
+    {
+        REG20=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag22","cpanel",1,1,&value,timestamp); 
+    REG21=value;
+    if (ret<0)
+    {
+        REG21=-1;
+    } 
+        ret = read_tag_latest_data_from_db("Tag23","cpanel",1,1,&value,timestamp);    
+    REG22=value;
+    if (ret<0)
+    {
+        REG22=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag24","cpanel",1,1,&value,timestamp); 
+    REG23=value;
+    if (ret<0)
+    {
+        REG23=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag25","cpanel",1,1,&value,timestamp); 
+    REG24=value;
+    if (ret<0)
+    {
+        REG24=-1;
+    } 
+
 
     update_info();
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     //calling send tcp to send the data
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
@@ -569,7 +690,7 @@ int ignstate;
 
 
 // function to update the basic information time and gps info
-void update_info()
+void update_info(void)
 {
     int ret;
 
@@ -619,7 +740,7 @@ void update_info()
 }
 
 // function to send poll response
-void send_poll_response()
+void send_poll_response(void)
 {
     update_info();
 
@@ -634,7 +755,7 @@ void send_poll_response()
 }
 
 // function to send power up
-void send_power_up()
+void send_power_up(void)
 {
     update_info();
     
@@ -649,7 +770,7 @@ void send_power_up()
 }
 
 // function to send power loss
-void send_power_loss()
+void send_power_loss(void)
 {
     update_info();
     
@@ -664,7 +785,7 @@ void send_power_loss()
 }
 
 // function to send power restore
-void send_power_restore()
+void send_power_restore(void)
 {
   
     update_info();
@@ -678,7 +799,7 @@ void send_power_restore()
 }
 
 // function to send ignition off
-void send_ignition_off()
+void send_ignition_off(void)
 {
     update_info();
     
@@ -695,7 +816,7 @@ void send_ignition_off()
 
 
 
-void send_ignition_on()
+void send_ignition_on(void)
 {
 
     update_info();
@@ -711,7 +832,7 @@ void send_ignition_on()
 }
 
 // function to send heartbeat
-void send_heartbeat()
+void send_heartbeat(void)
 {
     update_info();
 
@@ -725,7 +846,7 @@ void send_heartbeat()
 }
 
 // function to send the sign on 
-void ready_device()
+void ready_device(void)
 {
  
     //for DEBUG purpose only
