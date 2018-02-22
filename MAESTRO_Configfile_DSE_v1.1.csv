@@ -75,8 +75,8 @@ Group8Start,,,,,,,,,,,,
 Page16ControlReg,5,1,1,1,1,1,1,,,,,
 QueryStart,,,,,,,,,,,,
 DSEPANEL,1,3,4104,2,NULL,NULL,,,,,,
-Tag19,0,2,3,1,0,4,NULL,NULL,NULL,0,0,0
-Tag25,1,2,3,1,0,4,NULL,NULL,NULL,0,0,0
+Tag26,0,2,3,1,0,4,NULL,NULL,NULL,0,0,0
+Tag27,1,2,3,1,0,4,NULL,NULL,NULL,0,0,0
 QueryEnd,,,,,,,,,,,,
 Group8End,,,,,,,,,,,,
 PollingGroupEnd,,,,,,,,,,,,
