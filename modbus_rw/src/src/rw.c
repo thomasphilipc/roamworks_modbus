@@ -414,6 +414,14 @@ void read_tcp_data(void)
         {
             send_heartbeat();
         }
+        else if (strstr(read_buff, "rate") != NULL) 
+        {
+            change_reporting_rates(read_buff);
+        }
+        else if (strstr(read_buff, "server") != NULL) 
+        {
+            change_server(read_buff);
+        }
 
         bzero(read_buff,1024);
     }
@@ -936,19 +944,74 @@ int connect_tcp(void)
     return tcp_status;
 }
 
-int change_server()
+int change_server(char *line)
 {
+// expect text in format <server(string),server_hostname(string),server_port(int)>
 //            not implemented                                //
 //  char *server_hostname = "qaroam3.roamworks.com";         //
 //  unsigned short server_port = 6102;                       //
 //               for future                                  //
+
+printf("%s\n",line);
+            char* pt;
+            pt = strtok(line,",");
+            int a;            
+            while (pt != NULL)
+            {
+            
+            switch (i)
+            {
+            case 1: 
+
+                    break;
+            case 2:
+                    printf("new server name is %s\n",pt);
+                    server_hostname=pt;
+                    break;
+            case 3: 
+                    a = atoi(pt);
+                    printf("new port is %d\n",a);
+                    server_port=a;
+                    break;
+            }
+            pt = strtok (NULL,",");
+            i++;
+            }    
 }
 
-int change_reporting_rates()
+int change_reporting_rates(char *line)
 {
+// expect text in format <rate(string),reportingrate(int),heartbeatrate(int)>
 //        not implemented         //
 //     heartbeat_rate variable    //
 //     reporting_rate variable    //
+
+printf("%s\n",line);
+            char* pt;
+            pt = strtok(line,",");
+            int a;            
+            while (pt != NULL)
+            {
+            
+            switch (i)
+            {
+            case 1: 
+
+                    break;
+            case 2:
+                    a = atoi(pt);
+                    printf("new reporting rate is %s\n",pt);
+                    reporting_rate=a;
+                    break;
+            case 3: 
+                    a = atoi(pt);
+                    printf("new heartbeat rate is %d\n",a);
+                    heartbeat_rate=a;
+                    break;
+            }
+            pt = strtok (NULL,",");
+            i++;
+            }  
 }
 
 
@@ -969,16 +1032,116 @@ char  datatosend[] ="Application Stopped running \r";
 
 }
 
+int write_per(void)
+{
+    printf("writing data to modbus_rw_config.dat\n");
+    FILE *fp;
+
+    fp = fopen("/etc/modbus_rw_config.dat","w+");
+
+    if (fp)
+    {
+        fprintf(fp,"%d,%d,%d,%d,%d,%s,%d",reporting_rate,heartbeat_rate,failed_msgs,ign_state,pwr_state,server_hostname,server_port);
+        fclose(fp);
+        ret=read_per();
+        return 0;
+    }
+    else
+    printf("Writing to config failed\n");
+
+    return -1;
+}
+
+int read_per(void)
+{
+    printf("reading data from modbus_rw_config.dat");
+
+    char line[1024];
+    FILE *fp;
+
+    fp = fopen("/etc/modbus_rw_config.dat","r");
+    int i=1;
+
+    if (fp)
+    {
+        while (fgets(line,1024,fp))
+        {
+            printf("%s\n",line);
+            char* pt;
+            pt = strtok(line,",");
+            int a;            
+            while (pt != NULL)
+            {
+            
+            switch (i)
+            {
+            case 1: 
+                    a = atoi(pt);
+                    printf("reportin rate is %d\n",a);
+                    reporting_rate=a;
+                    break;
+            case 2:
+                    a = atoi(pt);
+                    printf("heartbeat rate is %d\n",a);
+                    heartbeat_rate=a;
+                    break;
+            case 3: 
+                    a = atoi(pt);
+                    printf("failed messages is %d\n",a);
+                    failed_msgs=a;
+                    break;
+            case 4:
+                    a = atoi(pt);
+                    printf("ignition state is %d\n",a);
+                    ign_state=a;
+                    break;
+            case 5:
+                    a = atoi(pt);
+                    printf("power state is %d\n",a);
+                    pwr_state=a;
+                    break;
+            case 6:
+                    printf("server address is %s\n",pt);
+                    server_hostname=pt;
+                    break;
+            case 7:
+                    a = atoi(pt);
+                    printf("server port is %d\n",a);
+                    server_port=a;
+                    break;
+            }
+            pt = strtok (NULL,",");
+            i++;
+            }                                                                                                                                                                   
+        }        
+        fclose(fp);    
+    }
+    else
+    {
+    ret=write_per();
+    if (ret<0)
+    {
+        printf("Writing to config failed\n");
+    }
+    else
+    printf("writing data to modbus_rw_config.dat\n");
+    }    
+    return 0;
+
+}
+
 
 // MAIN PROGRAM CALL STARTS BELOW
 
 int main (int argc, char *argv[])
 {
+   
     printf("Initialization in process \n");    
+    ret=read_per();
     // sleep to wait for initialisation
-    sleep(10);
+    sleep(3);
     
-    
+
     //get the loggerid - this will be from the CSV file uploaded to master_modbus
     ret = get_loggerid(logger_id); 
     //obtain imei number
@@ -1027,7 +1190,7 @@ int main (int argc, char *argv[])
     
     alarm(1);  /* Request SIGALRM each second*/
 
-
+    
 
 
 // Below is the main loop that will run the business logic
@@ -1115,6 +1278,7 @@ int main (int argc, char *argv[])
     printf (" %d is the return for shutdown \n",ret);
     ret= close(sockfd);
     printf (" %d is the return for close \n",ret);
+    ret=write_per(); 
 
    
     exit(0);
