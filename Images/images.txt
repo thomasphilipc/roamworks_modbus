@@ -1,2 +1,15 @@
 list of images
 
+Tag0   1025     signed int
+Tag1   1030     unsigned int
+Tag2   1031     unsigned int
+Tag7   1038     
+Tag8   1032
+Tag9   1044
+Tag11  1040
+Tag12  1034
+Tag13  1046
+Tag15  1042
+Tag16  1036
+Tag17  1048
+Tag20  1024     unsigned int

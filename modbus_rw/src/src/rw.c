@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.10         //
-//  updated last 25/02/18 : 12:56 PM   //
+//  applicaiton version: 0.1.11         //
+//  updated last 26/02/18 : 16:09 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -475,7 +475,8 @@ int res,ret1;
 
 
 printf("entered polling section for modbus_data\n");
-
+REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
+REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1;REG26=-1,REG27=-1;
 
     double value;
     char timestamp[26];
@@ -538,12 +539,7 @@ printf("entered polling section for modbus_data\n");
     {
         REG8=-1;
     } 
-    //ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",1,1,&value,timestamp); 
-    //REG9=value;
-    //if (ret<0)
-    //{
-    //    REG9=-1;
-    //} 
+
     ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&value,timestamp); 
     REG10=value;
     if (ret<0)
@@ -562,12 +558,7 @@ printf("entered polling section for modbus_data\n");
     {
         REG12=-1;
     } 
-    //ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",1,1,&value,timestamp); 
-    //REG13=value;
-    //if (ret<0)
-    //{
-    //    REG13=-1;
-    //} 
+
     ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&value,timestamp); 
     REG14=value;
     if (ret<0)
@@ -586,18 +577,7 @@ printf("entered polling section for modbus_data\n");
     {
         REG16=-1;
     } 
-    //ret = read_tag_latest_data_from_db("Tag18","DSEPANEL",1,1,&value,timestamp);    
-    //REG17=value;
-    //if (ret<0)
-    //{
-    //    REG17=-1;
-    //} 
-    //ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",7,1,&value,timestamp); 
-    //REG18=value;
-    //if (ret<0)
-    //{
-    //    REG18=-1;
-    //} 
+
     ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&value,timestamp); 
     REG19=value;
     if (ret<0)
@@ -628,26 +608,7 @@ printf("entered polling section for modbus_data\n");
     {
         REG23=-1;
     } 
-    /*
-    ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",7,1,&value,timestamp); 
-    REG24=value;
-    if (ret<0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag26","DSEPANEL",8,1,&value,timestamp); 
-    REG25=value;
-    if (ret<0)
-    {
-        REG25=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag27","DSEPANEL",8,1,&value,timestamp); 
-    REG26=value;
-    if (ret<0)
-    {
-        REG26=-1;
-    } 
-    */
+
 
 
     update_info();
@@ -673,16 +634,9 @@ int powerstate;
 int ignstate;
 
     powerstate=get_gpio_value(30);
-    //printf ("IO state for digital input 1 (Power)(internal pin 30) is %d\n", powerstate);
+
 
     ignstate=get_gpio_value(31);
-    //printf ("IO state for digital input 2 (Ignition)(internal pin 31) is %d\n", ignstate);
-
-    //iostate=get_gpio_value(32);
-    //printf ("IO state for 2 is %d\n", iostate);
-
-    //iostate=get_gpio_value(62);
-    //printf ("IO state for 3 is %d\n", iostate);
 
 
     if (powerstate==0)
@@ -1263,6 +1217,7 @@ int main (int argc, char *argv[])
             printf("Power Loss\n");
             send_power_loss();
             do_function=0;
+            ret=write_per();
             break;
 
     case 7:
