@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.9         //
-//  updated last 21/02/18 : 12:56 PM   //
+//  applicaiton version: 0.1.10         //
+//  updated last 25/02/18 : 12:56 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -40,7 +40,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.9"
+#define script_ver "v0.1.10"
 
 
 // below int set to 1 will exit out the application
@@ -58,7 +58,7 @@ volatile int tcp_status=0;
 //keeps track of count of failed messages
 int failed_msgs=1;
 // the reporting rate and heartbeat rate is set as a variable to allow future usage in changing them OTA
-int reporting_rate =5;
+int reporting_rate =2;
 int heartbeat_rate=720;
 // the below parameters are expected to be static and would not change after configuration
 char imei[15];
@@ -538,12 +538,12 @@ printf("entered polling section for modbus_data\n");
     {
         REG8=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",1,1,&value,timestamp); 
-    REG9=value;
-    if (ret<0)
-    {
-        REG9=-1;
-    } 
+    //ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",1,1,&value,timestamp); 
+    //REG9=value;
+    //if (ret<0)
+    //{
+    //    REG9=-1;
+    //} 
     ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&value,timestamp); 
     REG10=value;
     if (ret<0)
@@ -562,12 +562,12 @@ printf("entered polling section for modbus_data\n");
     {
         REG12=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",1,1,&value,timestamp); 
-    REG13=value;
-    if (ret<0)
-    {
-        REG13=-1;
-    } 
+    //ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",1,1,&value,timestamp); 
+    //REG13=value;
+    //if (ret<0)
+    //{
+    //    REG13=-1;
+    //} 
     ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&value,timestamp); 
     REG14=value;
     if (ret<0)
@@ -586,18 +586,18 @@ printf("entered polling section for modbus_data\n");
     {
         REG16=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag18","DSEPANEL",1,1,&value,timestamp);    
-    REG17=value;
-    if (ret<0)
-    {
-        REG17=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",7,1,&value,timestamp); 
-    REG18=value;
-    if (ret<0)
-    {
-        REG18=-1;
-    } 
+    //ret = read_tag_latest_data_from_db("Tag18","DSEPANEL",1,1,&value,timestamp);    
+    //REG17=value;
+    //if (ret<0)
+    //{
+    //    REG17=-1;
+    //} 
+    //ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",7,1,&value,timestamp); 
+    //REG18=value;
+    //if (ret<0)
+    //{
+    //    REG18=-1;
+    //} 
     ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&value,timestamp); 
     REG19=value;
     if (ret<0)
@@ -628,6 +628,7 @@ printf("entered polling section for modbus_data\n");
     {
         REG23=-1;
     } 
+    /*
     ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",7,1,&value,timestamp); 
     REG24=value;
     if (ret<0)
@@ -646,6 +647,7 @@ printf("entered polling section for modbus_data\n");
     {
         REG26=-1;
     } 
+    */
 
 
     update_info();
@@ -947,7 +949,11 @@ int connect_tcp(void)
 
         /* Do the actual connection. */
     if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
-         printf ("Socket creation failed \n");
+         printf ("TCP  connection failed closing socket\n");
+         ret = shutdown(sockfd, SHUT_WR);
+         printf (" %d is the return for shutdown \n",ret);
+         ret= close(sockfd);
+         printf (" %d is the return for close \n",ret);
          tcp_status=-1;
     }
     else
@@ -1136,7 +1142,7 @@ int read_per(void)
         printf("Writing to config failed\n");
     }
     else
-    printf("writing data to modbus_rw_config.dat\n");
+    printf("Creating modbus_rw_config.dat\n");
     }    
     return 0;
 
