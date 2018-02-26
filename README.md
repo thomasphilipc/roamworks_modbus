@@ -15,33 +15,7 @@ Functionality
 8) Sends Ignition Off - Send when ignition power goes to low from high for 5 seconds
 
 
-Installation
-
-Dependencies
-Modbusmaster_V3.2  (3.2.5)
-libgeneric_apis_2.1  (2.1)
-
-Steps
-1) Power the maestro
-2) connect to the maestro via a web browser
-3) Update the packages list from http://43.252.193.234/packages  
-4) Install modbusmaster_v3.2
-5) Reboot the maestro
-6) Install Libgeneric_apis
-7) Enable the reporting agents, gps , serial 
-8) Upload the modbusmaster config csv and enable
-9) Load and install the modbus_rw and install with --nodeps 
-10) Update the init.d  file restart applciation on reboot
-
-Application Logic 
-
-A primary recurring 1 second alarm/timer is run to monitor change in states and to keep a track of time. During each cycle the system flags a control to execute the required operation
-
-There are some auxillary timers/alarms that control the reading from tcp line at every 30 seconds and monitor IO lines for changes every second
-
-
 Task to do
-
 Delete database periodically to control usage 
     ? When to delete - after every week 
 Controlled restart of the application every week 
