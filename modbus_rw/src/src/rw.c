@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.11         //
-//  updated last 26/02/18 : 16:09 PM   //
+//  applicaiton version: 0.1.13         //
+//  updated last 27/02/18 : 14:30 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -40,7 +40,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.10"
+#define script_ver "v0.1.13"
 
 
 // below int set to 1 will exit out the application
@@ -66,8 +66,9 @@ char logger_id[20];
 
 // the below parameters are the content that will be on the reports send
 int fix=0,course=-1,speed=-1,power,in7,bat=-1,dop=-1,satsused=-1;
-int REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
-int REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1;REG26=-1,REG27=-1;
+int REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG9=-1,REG10=-1,REG11=-1,REG14=-1,REG15=-1;
+int REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1;
+double REG8=-1,REG12=-1,REG16=-1,REG7=-1,REG17=-1,REG13=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
 //below are various buffers used for read write and db polling
@@ -100,6 +101,14 @@ int ign_filter=0; //a filter implementation via counter to check if the state is
 int ign_state=-1; // a state holder where -1 is indeterminant 
 int pwr_state=-1;  // a power state holder , we assume it is High on start up
 int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
+
+// below variables are for persistent data
+char *pers_server_hostname="qaroam3.roamworks.com";
+unsigned short pers_server_port=6102; 
+int pers_reporting_rate=5;
+int pers_heartbeat_rate=720;
+int pers_ign_state=-1; 
+int pers_pwr_state=-1;
 
 
 // define individual timers 
@@ -399,6 +408,7 @@ void read_tcp_data(void)
 {
 
     int nread;    
+    bzero(read_buff,1024);
     nread=recv(sockfd, read_buff , 1024 ,MSG_DONTWAIT);
     if(nread>0)
     {
@@ -414,7 +424,7 @@ void read_tcp_data(void)
         {
             send_heartbeat();
         }
-        else if (strstr(read_buff, "rate") != NULL) 
+        else if (strstr(read_buff, "rate,") != NULL) 
         {
             change_reporting_rates(read_buff);
         }
@@ -884,6 +894,7 @@ int connect_tcp(void)
 
     /* Prepare sockaddr_in. */
     // gets ip from a dns
+    printf ("the servername is %s \n ",server_hostname);
     hostent = gethostbyname(server_hostname);
     if (hostent == NULL) {
         fprintf(stderr, "error: gethostbyname(\"%s\")\n", server_hostname);
@@ -918,37 +929,43 @@ int connect_tcp(void)
 
 int change_server(char *line)
 {
+read_per();
 // expect text in format <server(string),server_hostname(string),server_port(int)>
 //            not implemented                                //
 //  char *server_hostname = "qaroam3.roamworks.com";         //
 //  unsigned short server_port = 6102;                       //
 //               for future                                  //
 
+
 printf("%s\n",line);
             char* pt;
             pt = strtok(line,",");
-            int a;            
-            while (pt != NULL)
+            int a,i=1;            
+            while (i<4)
             {
             
             switch (i)
             {
             case 1: 
-
+                    printf("Changing server and port\n");
                     break;
             case 2:
-                    printf("new server name is %s\n",pt);
+                    
                     server_hostname=pt;
+                    printf("new server name is %s\n",server_hostname);
+                    pers_server_hostname=server_hostname;
                     break;
             case 3: 
                     a = atoi(pt);
-                    printf("new port is %d\n",a);
                     server_port=a;
+                    printf("new port is %d\n",server_port);
+                    pers_server_port=server_port;
                     break;
             }
             pt = strtok (NULL,",");
             i++;
-            }    
+            }   
+            write_per(); 
 }
 
 int change_reporting_rates(char *line)
@@ -958,32 +975,36 @@ int change_reporting_rates(char *line)
 //     heartbeat_rate variable    //
 //     reporting_rate variable    //
 
-printf("%s\n",line);
-            char* pt;
-            pt = strtok(line,",");
-            int a;            
-            while (pt != NULL)
+printf("text received at reporting rate change function is %s\n",line);
+            read_per();            
+            char* t;
+            t = strtok(line,",");
+
+            int i=1,a;            
+            while (i<4)
             {
             
             switch (i)
             {
             case 1: 
-
+                    printf("Changing reporting rate OTA\n");
                     break;
             case 2:
-                    a = atoi(pt);
-                    printf("new reporting rate is %s\n",pt);
-                    reporting_rate=a;
+                    reporting_rate=atoi(t);
+                    printf("new reporting rate %d \n",reporting_rate);
+                    pers_reporting_rate=reporting_rate;
                     break;
             case 3: 
-                    a = atoi(pt);
+                    a = atoi(t);
                     printf("new heartbeat rate is %d\n",a);
                     heartbeat_rate=a;
+                    pers_heartbeat_rate=heartbeat_rate;
                     break;
             }
-            pt = strtok (NULL,",");
+            t = strtok (NULL,",");
             i++;
             }  
+    write_per(); 
 }
 
 
@@ -1004,17 +1025,19 @@ char  datatosend[] ="Application Stopped running \r";
 
 }
 
-int write_per(void)
+int write_per()
 {
     printf("writing data to modbus_rw_config.dat\n");
     FILE *fp;
 
-    fp = fopen("/etc/modbus_rw_config.dat","w+");
+    fp = fopen("/etc/modbus_rw_config.dat","w");
 
     if (fp)
     {
-        fprintf(fp,"%d,%d,%d,%d,%d,%s,%d",reporting_rate,heartbeat_rate,failed_msgs,ign_state,pwr_state,server_hostname,server_port);
+        printf(" writinh following data to file : %d,%d,%d,%d,%d,%s,%d \n",pers_reporting_rate,pers_heartbeat_rate,failed_msgs,pers_ign_state,pers_pwr_state,pers_server_hostname,pers_server_port);
+        fprintf(fp,"%d,%d,%d,%d,%d,%s,%d",pers_reporting_rate,pers_heartbeat_rate,failed_msgs,pers_ign_state,pers_pwr_state,pers_server_hostname,pers_server_port);
         fclose(fp);
+        sleep(2);
         ret=read_per();
         return 0;
     }
@@ -1024,9 +1047,9 @@ int write_per(void)
     return -1;
 }
 
-int read_per(void)
+int read_per()
 {
-    printf("reading data from modbus_rw_config.dat");
+    printf("reading data from modbus_rw_config.dat\n");
 
     char line[1024];
     FILE *fp;
@@ -1049,38 +1072,41 @@ int read_per(void)
             {
             case 1: 
                     a = atoi(pt);
-                    printf("reportin rate is %d\n",a);
-                    reporting_rate=a;
+                    pers_reporting_rate=a;
+                   
                     break;
             case 2:
+
                     a = atoi(pt);
-                    printf("heartbeat rate is %d\n",a);
-                    heartbeat_rate=a;
+                    pers_heartbeat_rate=a;
+
                     break;
             case 3: 
                     a = atoi(pt);
-                    printf("failed messages is %d\n",a);
                     failed_msgs=a;
                     break;
             case 4:
                     a = atoi(pt);
-                    printf("ignition state is %d\n",a);
-                    ign_state=a;
+                    pers_ign_state=a;
+                   
                     break;
             case 5:
                     a = atoi(pt);
-                    printf("power state is %d\n",a);
-                    pwr_state=a;
+                    pers_pwr_state=a;
+                    
                     break;
             case 6:
-                    printf("server address is %s\n",pt);
-                    server_hostname=pt;
+
+                    pers_server_hostname= pt;                  
                     break;
             case 7:
                     a = atoi(pt);
-                    printf("server port is %d\n",a);
-                    server_port=a;
+                    pers_server_port=a;
+
+                  
                     break;
+            default:    
+                    i++;
             }
             pt = strtok (NULL,",");
             i++;
@@ -1106,10 +1132,19 @@ int read_per(void)
 // MAIN PROGRAM CALL STARTS BELOW
 
 int main (int argc, char *argv[])
-{
-   
+{   
+        ret=read_per();
+    ign_state=pers_ign_state;
+    pwr_state=pers_pwr_state;
+    reporting_rate=pers_reporting_rate;
+    heartbeat_rate=pers_heartbeat_rate;
+    if (ign_state<0)
+    {
+    printf("fresh install\n");
+    write_per();   
+    }    
     printf("Initialization in process \n");    
-    ret=read_per();
+
     // sleep to wait for initialisation
     sleep(3);
     
@@ -1132,7 +1167,7 @@ int main (int argc, char *argv[])
     {
         // to give info to the user on terminal  
         printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to local \n", script_ver, imei, logger_id);
-
+        // if first start then set hostname and port
         server_hostname = "80.227.131.54";
         unsigned short server_port = 6102; 
         // conncect tcp
@@ -1161,8 +1196,8 @@ int main (int argc, char *argv[])
     }
     
     alarm(1);  /* Request SIGALRM each second*/
-
     
+
 
 
 // Below is the main loop that will run the business logic
@@ -1187,6 +1222,9 @@ int main (int argc, char *argv[])
             printf("Power UP\n");
             send_power_up();
             do_function=0;
+            read_per();
+            pers_pwr_state=pwr_state;
+            write_per();
             break;
 
     case 2:
@@ -1204,19 +1242,27 @@ int main (int argc, char *argv[])
     case 4:
             printf("Ignition OFF\n");
             send_ignition_off();
+read_per();
+pers_ign_state=ign_state;
             do_function=0;
+write_per();
             break;
 
     case 5:
             printf("Ignition ON\n");
             send_ignition_on();
+read_per();
+pers_ign_state=ign_state;
             do_function=0;
+write_per();
             break;
     
     case 6:
             printf("Power Loss\n");
             send_power_loss();
             do_function=0;
+read_per();
+pers_pwr_state=pwr_state;
             ret=write_per();
             break;
 
@@ -1224,6 +1270,9 @@ int main (int argc, char *argv[])
             printf("Power Restore\n");
             send_power_restore();
             do_function=0;
+read_per();
+pers_pwr_state=pwr_state;
+            ret=write_per();
             break;
     
     case 8:
@@ -1246,12 +1295,13 @@ int main (int argc, char *argv[])
 
 }
     while (!reboot);
-
+    read_per();
+    write_per();
     ret = shutdown(sockfd, SHUT_WR);
     printf (" %d is the return for shutdown \n",ret);
     ret= close(sockfd);
     printf (" %d is the return for close \n",ret);
-    ret=write_per(); 
+
 
    
     exit(0);
