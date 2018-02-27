@@ -18,6 +18,9 @@ Functionality
 10) Update the reporting rate configuration OTA
 
 Version Chanelog:
+0.1.13 
+Database persistence 
+OTA server & reporting rate change
 
 
 Task to do
