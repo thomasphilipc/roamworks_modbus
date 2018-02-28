@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.15         //
-//  updated last 28/02/18 : 11:30 PM   //
+//  applicaiton version: 0.1.16         //
+//  updated last 28/02/18 : 13:45 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -40,7 +40,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.15"
+#define script_ver "v0.1.16"
 
 
 // below int set to 1 will exit out the application
@@ -222,11 +222,12 @@ void secondCB()
 
 }
 
-// not used
-//void thirdCB()
-//{
-//printf( "Function 3 from timer 3 called \n");
-//}
+
+void thirdCB()
+{
+printf( "Function 3 from timer 3 called \n");
+do_function=10;
+}
 
 
 // function to launch the send tcp in a thread
@@ -259,9 +260,9 @@ static void timerHandler( int sig, siginfo_t *si, void *uc )
     else if ( *tidp == secondTimerID )
     // if signal originated by second timer then call function secondCB()
         secondCB();
-    //else if ( *tidp == thirdTimerID )
+    else if ( *tidp == thirdTimerID )
     // if signal originated by third timer then call function thirdCB()
-    //  thirdCB();
+      thirdCB();
 }
 
 // function to make timers and assign the signals with the timer expires ; returns 0 on success and -1 on failure
@@ -312,10 +313,10 @@ static int srtSchedule( void )
 
     rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);   // defined to read tcp for new data every 30 seconds
 
-    //rc3 = makeTimer("Third Timer", &thirdTimerID, 10, 10);
+    rc3 = makeTimer("Third Timer", &thirdTimerID, 180, 0);
 
-    //return (rc1+rc2+rc3);
-    return (rc1+rc2);
+    return (rc1+rc2+rc3);
+    //return (rc1+rc2);
 }
 
 
@@ -1130,7 +1131,9 @@ int read_per()
 // MAIN PROGRAM CALL STARTS BELOW
 
 int main (int argc, char *argv[])
-{   
+{   sleep(3);
+    long pid_value = (long)getpid();
+    printf("Application running on pid : %ld \n",pid_value);
     printf("Initialization in process \n");   
     ret=read_per();
     ign_state=pers_ign_state;
@@ -1155,6 +1158,7 @@ int main (int argc, char *argv[])
 
     // create a signal and assign the alarm handler
     struct sigaction sact;
+    memset(&sact,0 , sizeof sact);
     sigemptyset (&sact.sa_mask);
     sact.sa_flags = 0;
     sact.sa_handler = sigalrm_handler;
@@ -1287,6 +1291,14 @@ pers_pwr_state=pwr_state;
 
     case 10: 
             printf("restart the application\n");
+            alarm(0);
+            sleep(3);
+            ret = shutdown(sockfd, SHUT_WR);
+            printf (" %d is the return for shutdown \n",ret);
+            ret= close(sockfd);
+            printf (" %d is the return for close \n",ret);
+            execve("/usr/bin/modbus_rw",NULL,NULL);
+            printf("Restart should have occured and this line will not be shown \n");  
 
     default:
 

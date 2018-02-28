@@ -29,6 +29,9 @@ introduce application restart
 0.1.15
 removed the control argument to select local dev server
 
+0.1.16
+Added logic for application controlled restart
+
 
 Task to do
 Delete database periodically to control usage 
