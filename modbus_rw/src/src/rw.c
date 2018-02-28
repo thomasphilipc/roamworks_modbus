@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.13         //
-//  updated last 27/02/18 : 14:30 PM   //
+//  applicaiton version: 0.1.15         //
+//  updated last 28/02/18 : 11:30 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -40,11 +40,11 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.13"
+#define script_ver "v0.1.15"
 
 
 // below int set to 1 will exit out the application
-volatile int reboot=0;
+volatile int stop=0;
 // below flag is set to handle functions
 volatile int do_function=0;
 // keeps track of the minutes elapsed
@@ -93,8 +93,8 @@ struct hostent *hostent;
 /* This is the struct used by INet addresses. */
 struct sockaddr_in sockaddr_in;
 // defaulted server name and port setting
-char *server_hostname = "qaroam3.roamworks.com";
-unsigned short server_port = 6102; 
+char *server_hostname;
+unsigned short server_port; 
 
 // below variables are to handle ignition
 int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
@@ -102,7 +102,7 @@ int ign_state=-1; // a state holder where -1 is indeterminant
 int pwr_state=-1;  // a power state holder , we assume it is High on start up
 int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
 
-// below variables are for persistent data
+// below variables are for persistent data or defaults
 char *pers_server_hostname="qaroam3.roamworks.com";
 unsigned short pers_server_port=6102; 
 int pers_reporting_rate=5;
@@ -794,7 +794,7 @@ void send_ignition_off(void)
     printf("sending ignition off\n");
 
             // prepare the format of the ignition OFF message
-    snprintf(ign_command, sizeof(ign_command), "$IN8L 36 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    snprintf(ign_command, sizeof(ign_command), "$IN8L 21 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -811,7 +811,7 @@ void send_ignition_on(void)
     printf("sending ignition on\n");
 
     // prepare the format of the Ignition ON message
-    snprintf(ign_command, sizeof(ign_command), "$IN8H 36 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    snprintf(ign_command, sizeof(ign_command), "$IN8H 21 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -836,7 +836,7 @@ void ready_device(void)
 {
  
     //for DEBUG purpose only
-    //printf("The device has just rebooted \n");  
+    //printf("The device has just stoped \n");  
     int ret;
 
     char  datatosend[100];
@@ -876,6 +876,9 @@ if (error != 0) {
 int connect_tcp(void)
 {
 
+    read_per();
+    server_hostname=pers_server_hostname;
+    server_port=pers_server_port;
     /* Get socket. */
     // sets the protocol to TCP
     protoent = getprotobyname(protoname);
@@ -930,11 +933,6 @@ int connect_tcp(void)
 int change_server(char *line)
 {
 read_per();
-// expect text in format <server(string),server_hostname(string),server_port(int)>
-//            not implemented                                //
-//  char *server_hostname = "qaroam3.roamworks.com";         //
-//  unsigned short server_port = 6102;                       //
-//               for future                                  //
 
 
 printf("%s\n",line);
@@ -965,7 +963,7 @@ printf("%s\n",line);
             pt = strtok (NULL,",");
             i++;
             }   
-            write_per(); 
+write_per(); 
 }
 
 int change_reporting_rates(char *line)
@@ -1020,8 +1018,8 @@ char  c;
 char  datatosend[] ="Application Stopped running \r";
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
     pthread_join(thread_id,NULL);
-    //setting reboot to 1 will exit the worker loop
-    reboot=1;
+    //setting stop to 1 will exit the worker loop
+    stop=1;
 
 }
 
@@ -1133,17 +1131,18 @@ int read_per()
 
 int main (int argc, char *argv[])
 {   
-        ret=read_per();
+    printf("Initialization in process \n");   
+    ret=read_per();
     ign_state=pers_ign_state;
     pwr_state=pers_pwr_state;
     reporting_rate=pers_reporting_rate;
     heartbeat_rate=pers_heartbeat_rate;
     if (ign_state<0)
     {
-    printf("fresh install\n");
+    printf("fresh install will create the config file\n");
     write_per();   
     }    
-    printf("Initialization in process \n");    
+ 
 
     // sleep to wait for initialisation
     sleep(3);
@@ -1162,25 +1161,24 @@ int main (int argc, char *argv[])
     sigaction(SIGALRM, &sact, NULL);
 
 
-    // if any argument is passed then points to local
+    /* if any argument is passed then points to local
     if(argc>1)
     {
         // to give info to the user on terminal  
         printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to local \n", script_ver, imei, logger_id);
         // if first start then set hostname and port
-        server_hostname = "80.227.131.54";
-        unsigned short server_port = 6102; 
+        server_hostname = "qaroam3.roamworks.com";
+        server_port = 6102; 
         // conncect tcp
         connect_tcp();  
     }
 
-    else
-    {
+    */
         // if anything else is passed then points to server 
         // to give info to the user on terminal  
         printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
         connect_tcp();   
-    }
+    
     
     //sends the login message
     ready_device();
@@ -1287,6 +1285,9 @@ pers_pwr_state=pwr_state;
             do_function=0;
             break;
 
+    case 10: 
+            printf("restart the application\n");
+
     default:
 
             break;
@@ -1294,7 +1295,7 @@ pers_pwr_state=pwr_state;
 
 
 }
-    while (!reboot);
+    while (!stop);
     read_per();
     write_per();
     ret = shutdown(sockfd, SHUT_WR);

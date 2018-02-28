@@ -22,6 +22,13 @@ Version Chanelog:
 Database persistence 
 OTA server & reporting rate change
 
+0.1.14
+rename reboot variable to stop
+introduce application restart 
+
+0.1.15
+removed the control argument to select local dev server
+
 
 Task to do
 Delete database periodically to control usage 
