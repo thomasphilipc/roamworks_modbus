@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.16         //
-//  updated last 28/02/18 : 13:45 PM   //
+//  applicaiton version: 0.1.18         //
+//  updated last 28/02/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -40,7 +40,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.16"
+#define script_ver "v0.1.18"
 
 
 // below int set to 1 will exit out the application
@@ -60,15 +60,16 @@ int failed_msgs=1;
 // the reporting rate and heartbeat rate is set as a variable to allow future usage in changing them OTA
 int reporting_rate =2;
 int heartbeat_rate=720;
-// the below parameters are expected to be static and would not change after configuration
+// the below parameters are expected to be static and wouf not change after configuration
 char imei[15];
 char logger_id[20];
 
 // the below parameters are the content that will be on the reports send
-int fix=0,course=-1,speed=-1,power,in7,bat=-1,dop=-1,satsused=-1;
-int REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG9=-1,REG10=-1,REG11=-1,REG14=-1,REG15=-1;
-int REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1;
+int fix=0,course=-1,speed=-1,power,in7,bat=-1;
+double REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG9=-1,REG10=-1,REG11=-1,REG14=-1,REG15=-1;
+double REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1;
 double REG8=-1,REG12=-1,REG16=-1,REG7=-1,REG17=-1,REG13=-1;
+double dop=-1,satsused=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
 //below are various buffers used for read write and db polling
@@ -77,7 +78,7 @@ char buff[100];         // time
 char read_buff[100];    // read
 // below variable are to handle fucntion responses
 int ret = -1, i, res,ret1;
-// holds the timestamps
+// hofs the timestamps
 char timestamp[26];
 // below flag is to handle tranistion changes
 int hodor=1;
@@ -98,8 +99,8 @@ unsigned short server_port;
 
 // below variables are to handle ignition
 int ign_filter=0; //a filter implementation via counter to check if the state is stable for the entire duration
-int ign_state=-1; // a state holder where -1 is indeterminant 
-int pwr_state=-1;  // a power state holder , we assume it is High on start up
+int ign_state=-1; // a state hofer where -1 is indeterminant 
+int pwr_state=-1;  // a power state hofer , we assume it is High on start up
 int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
 
 // below variables are for persistent data or defaults
@@ -119,6 +120,9 @@ timer_t thirdTimerID;
 // declaration of function and variable necessary for ioline checks
 int poll_ioline_state(int);
 int prev_io_state=-1;
+
+// database control
+long int db_size=0;
 
 // declaration of functions
 void update_info();
@@ -288,9 +292,9 @@ static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
     te.sigev_notify = SIGEV_SIGNAL;
     te.sigev_signo = sigNo;
     te.sigev_value.sival_ptr = timerID;
-    // initialize the timer with timer id passed along, the signal that should be evoked
+    // initialize the timer with timer id passed along, the signal that shouf be evoked
     timer_create(CLOCK_REALTIME, &te, timerID);
-    // configure the intervals the timer should execute on
+    // configure the intervals the timer shouf execute on
     its.it_interval.tv_sec = intervalS;
     its.it_interval.tv_nsec = 0;
     its.it_value.tv_sec = expireS;
@@ -313,7 +317,7 @@ static int srtSchedule( void )
 
     rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);   // defined to read tcp for new data every 30 seconds
 
-    rc3 = makeTimer("Third Timer", &thirdTimerID, 180, 0);
+    rc3 = makeTimer("Third Timer", &thirdTimerID, 1800, 0);
 
     return (rc1+rc2+rc3);
     //return (rc1+rc2);
@@ -357,7 +361,7 @@ void sigalrm_handler( int sig )
         }
     }
 
-    //below functions should be fired right away when a change in state occurs
+    //below functions shouf be fired right away when a change in state occurs
     if ((ign_state==0)&&(hodor==1))
     { 
         do_function=4; 
@@ -443,10 +447,11 @@ void read_tcp_data(void)
 // function to send data over tcp
 void send_tcp_data(void *data)
 {   
-
+    
+    printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
     // call remove substring to remove -1 which indicates values not avaialable
-    removeSubstring(data,"-1");    
-
+    removeSubstring(data,"-1.000000");    
+    printf("data being send is %s of length %d \n\n",data,strlen(data));
     ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
 
@@ -487,7 +492,7 @@ int res,ret1;
 
 printf("entered polling section for modbus_data\n");
 REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
-REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1;REG26=-1,REG27=-1;
+REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1;
 
     double value;
     char timestamp[26];
@@ -496,135 +501,162 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
 // variables to prepare periodic information 
  
     //get the modbus data values and set to -1 if not available
-    ret = read_tag_latest_data_from_db("Tag1","DSEPANEL",1,1,&value,timestamp);    
-    REG0=value;
-    if (ret<0)
+
+
+    ret = read_tag_latest_data_from_db("Tag0","DSEPANEL",1,1,&REG0,timestamp);  
+    printf("Tag1 value : %lf\n",REG0);  
+    if (ret!=0)
     {
         REG0=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag2","DSEPANEL",1,1,&value,timestamp); 
-    REG1=value;
-    if (ret<0)
+
+    ret = read_tag_latest_data_from_db("Tag1","DSEPANEL",1,1,&REG1,timestamp);  
+    printf("Tag1 value : %lf\n",REG1);  
+    if (ret!=0)
     {
         REG1=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",3,1,&value,timestamp); 
-    REG2=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag2","DSEPANEL",1,1,&REG2,timestamp); 
+    printf("Tag2 value :%lf\n",REG2); 
+    if (ret!=0)
     {
         REG2=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",4,1,&value,timestamp); 
-    REG3=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",3,1,&REG3,timestamp); 
+    printf("Tag3 value :%lf\n",REG3); 
+    if (ret!=0)
     {
         REG3=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",4,1,&value,timestamp); 
-    REG4=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",4,1,&REG4,timestamp); 
+    printf("Tag4 value :%lf\n",REG4); 
+
+    if (ret!=0)
     {
         REG4=-1;
-    }
-   ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",4,1,&value,timestamp); 
-    REG5=value;
-    if (ret<0)
+    } 
+    ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",4,1,&REG5,timestamp);  
+    printf("Tag5 value :%lf\n",REG5); 
+ 
+    if (ret!=0)
     {
         REG5=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&value,timestamp); 
-    REG6=value;
-    if (ret<0)
+    }
+   ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",4,1,&REG6,timestamp); 
+    printf("Tag6 value :%lf\n",REG6); 
+
+    if (ret!=0)
     {
         REG6=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&value,timestamp);    
-    REG7=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&REG7,timestamp); 
+    printf("Tag7 value :%lf\n",REG7); 
+
+    if (ret!=0)
     {
         REG7=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&value,timestamp); 
-    REG8=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&REG8,timestamp);  
+    printf("Tag8 valye :%lf\n",REG8);   
+
+    if (ret!=0)
     {
         REG8=-1;
     } 
+    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&REG9,timestamp); 
+    printf("Tag9 value :%lf\n",REG9); 
 
-    ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&value,timestamp); 
-    REG10=value;
     if (ret<0)
     {
-        REG10=-1;
+        REG9=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&value,timestamp); 
-    REG11=value;
-    if (ret<0)
+
+    ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&REG11,timestamp); 
+    printf("Tag11 value :%lf\n",REG11); 
+
+    if (ret!=0)
     {
         REG11=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&value,timestamp);    
-    REG12=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&REG12,timestamp); 
+    printf("Tag12 value :%lf\n",REG12); 
+
+    if (ret!=0)
     {
         REG12=-1;
     } 
+        ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&REG13,timestamp);  
+    printf("Tag 13 value :%lf\n",REG13);   
 
-    ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&value,timestamp); 
-    REG14=value;
     if (ret<0)
     {
-        REG14=-1;
+        REG13=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&value,timestamp); 
-    REG15=value;
-    if (ret<0)
+
+    ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&REG15,timestamp); 
+    printf("Tag 15 value :%lf\n",REG15); 
+
+    if (ret!=0)
     {
         REG15=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&value,timestamp); 
-    REG16=value;
+    ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&REG16,timestamp); 
+    printf("Tag 16 value :%lf\n",REG16); 
+
     if (ret<0)
     {
         REG16=-1;
     } 
+    ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&REG17,timestamp); 
+    printf("Tag 17 value :%lf\n",REG17); 
 
-    ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&value,timestamp); 
-    REG19=value;
-    if (ret<0)
+    if (ret!=0)
     {
-        REG19=-1;
+        REG17=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",5,1,&value,timestamp); 
-    REG20=value;
-    if (ret<0)
+
+    ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&REG20,timestamp); 
+    printf("Tag20 value :%lf\n",REG20); 
+
+    if (ret!=0)
     {
         REG20=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&value,timestamp); 
-    REG21=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",5,1,&REG21,timestamp); 
+    printf("Tag 21 value :%lf\n",REG21); 
+
+    if (ret!=0)
     {
         REG21=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",6,1,&value,timestamp);    
-    REG22=value;
-    if (ret<0)
+    ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&REG22,timestamp); 
+    printf("Tag 22 value :%lf\n",REG22); 
+
+    if (ret!=0)
     {
         REG22=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",2,1,&value,timestamp); 
-    REG23=value;
-    if (ret<0)
+        ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",6,1,&REG23,timestamp); 
+    printf("Tag 23 value :%lf\n",REG23);    
+
+    if (ret!=0)
     {
         REG23=-1;
     } 
+    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",2,1,&REG24,timestamp); 
+    printf("Tag 24 value :%lf\n",REG24); 
+
+    if (ret!=0)
+    {
+        REG24=-1;
+    } 
 
 
+    //CANP 36 &(IMEI),&(Time),&(Date),&(Lat),&(Lon),&(Fix),&(Course),&(Speed),&(NavDist),&(Alt),&(Power),&(Bat),&(IN7),&(Out0),&(DOP),&(SatsUsed), &(REG0),&(REG1),&(REG2),&(REG3),&(REG4),&(REG5),&(REG6),&(REG7),&(REG8),&(REG9),&(REG10),&(REG11),&(REG12),&(REG13),&(REG14),&(REG15),& (REG16),&(REG17),&(REG18),&(REG19),&(REG20),&(REG21),&(REG22),&(REG23),&(REG24)
 
     update_info();
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%f,%f,%d,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24,REG25,REG26);
+    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     //calling send tcp to send the data
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
@@ -735,7 +767,7 @@ void send_poll_response(void)
     printf("sending poll resp\n");
 
      // prepare the format of the powerloss message
-    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
     pthread_t thread_id = launch_thread_send_data((void*)poll_command);
     pthread_join(thread_id,NULL);
@@ -750,7 +782,7 @@ void send_power_up(void)
     printf("sending power up\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 0 %s,%s,%s,%f,%f,%d,,,,%d,,-1,-1,-1,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,-1,-1,-1,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
     
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -765,7 +797,7 @@ void send_power_loss(void)
     printf("sending power loss\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -779,7 +811,7 @@ void send_power_restore(void)
 
     char pwr_command[1024];
     // prepare the format of the power restore message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 0 %s,%s,%s,%f,%f,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -795,7 +827,7 @@ void send_ignition_off(void)
     printf("sending ignition off\n");
 
             // prepare the format of the ignition OFF message
-    snprintf(ign_command, sizeof(ign_command), "$IN8L 21 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+    snprintf(ign_command, sizeof(ign_command), "$IN8L 21 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,%d,%lf,%lf,,,,,,,,,,,,,,,,,,,,\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused);
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -812,7 +844,9 @@ void send_ignition_on(void)
     printf("sending ignition on\n");
 
     // prepare the format of the Ignition ON message
-    snprintf(ign_command, sizeof(ign_command), "$IN8H 21 %s,%s,%s,%f,%f,%d,,,,%f,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4);
+
+
+    snprintf(ign_command, sizeof(ign_command), "$IN8H 21 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,%d,%lf,%lf,,,,,,,,,,,,,,,,,,,,\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused);
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -1131,9 +1165,23 @@ int read_per()
 // MAIN PROGRAM CALL STARTS BELOW
 
 int main (int argc, char *argv[])
-{   sleep(3);
+{   
+
+char* timestamps;
+int ret;
+double values;
+    
+    db_size=Database_used_size();
+    printf("database  is %lf \n",db_size);
+    ret = read_tag_all_data_from_db("Tag0","DSEPANEL",1,1,"/tmp/tag0");  
+if (ret<0)
+{
+printf("Error occured \n");
+}
+    
+    sleep(3);
     long pid_value = (long)getpid();
-    printf("Application running on pid : %ld \n",pid_value);
+    printf("Application running on pid : %lf \n",pid_value);
     printf("Initialization in process \n");   
     ret=read_per();
     ign_state=pers_ign_state;
@@ -1169,7 +1217,7 @@ int main (int argc, char *argv[])
     if(argc>1)
     {
         // to give info to the user on terminal  
-        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to local \n", script_ver, imei, logger_id);
+        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and shouf report to local \n", script_ver, imei, logger_id);
         // if first start then set hostname and port
         server_hostname = "qaroam3.roamworks.com";
         server_port = 6102; 
@@ -1180,7 +1228,7 @@ int main (int argc, char *argv[])
     */
         // if anything else is passed then points to server 
         // to give info to the user on terminal  
-        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
+        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and shouf report to the server\n", script_ver, imei, logger_id);
         connect_tcp();   
     
     
@@ -1298,7 +1346,7 @@ pers_pwr_state=pwr_state;
             ret= close(sockfd);
             printf (" %d is the return for close \n",ret);
             execve("/usr/bin/modbus_rw",NULL,NULL);
-            printf("Restart should have occured and this line will not be shown \n");  
+            printf("Restart shouf have occured and this line will not be shown \n");  
 
     default:
 

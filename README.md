@@ -1,6 +1,6 @@
 # Maestro Modbus
 Current Stable Version: 
-Current Build Version:
+Current Build Version:0.1.18
 
 Modbus_rw is an application that runs on the Maestro RTU. The application gathers modbus data and ignition, power information and packages this data which is then send to the ROAM application
 
@@ -16,6 +16,7 @@ Functionality
 8) Sends Ignition Off - Send when ignition power goes to low from high for 5 seconds
 9) Update the server configuration OTA
 10) Update the reporting rate configuration OTA
+11) Restarts Applicatiion weekly
 
 Version Chanelog:
 0.1.13 
@@ -32,6 +33,8 @@ removed the control argument to select local dev server
 0.1.16
 Added logic for application controlled restart
 
+0.1.18
+Changed pollling modbus logic, fixed a bug in numbering of registers
 
 Task to do
 Delete database periodically to control usage 
@@ -46,8 +49,9 @@ If Internet is not available there is no fallback
 Future Enhancements
 
 Add SMS Fallback
-Build and Engineering interface
+Build an Engineering interface - for troubleshooting
 Log information and make this available
 Monitor App crash 
 Forward modbus writing using Modbus TCP
+Add command to restart application OTA
 
