@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  applicaiton version: 0.1.18         //
+//  application version: 0.1.18.1         //
 //  updated last 28/02/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -40,7 +40,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.18"
+#define script_ver "v0.1.18.1"
 
 
 // below int set to 1 will exit out the application
@@ -108,8 +108,8 @@ char *pers_server_hostname="qaroam3.roamworks.com";
 unsigned short pers_server_port=6102; 
 int pers_reporting_rate=5;
 int pers_heartbeat_rate=720;
-int pers_ign_state=-1; 
-int pers_pwr_state=-1;
+int pers_ign_state=-1; // initialized state
+int pers_pwr_state=-1; // to identify fresh app install
 
 
 // define individual timers 
@@ -129,11 +129,11 @@ void update_info();
 void send_tcp_data(void *data);
 void send_poll_response();
 void send_heartbeat();
-void removeSubstring(char *s,const char *toremove);
+void filterString(char *s,const char *toremove);
 void ready_device();
 
 // timer functions that will called when a signal is fired based on the respective timer
-void firstCB()
+void MonitorIOLines()
 {
 // the following function checks the state of the io lines every second
 int ret;
@@ -220,14 +220,14 @@ int ret;
 
 
 // to handle read tcp every 30 seconds
-void secondCB()
+void Read_TCP_Data()
 {
     do_function=9;
 
 }
 
 
-void thirdCB()
+void RestartApplication()
 {
 printf( "Function 3 from timer 3 called \n");
 do_function=10;
@@ -259,14 +259,14 @@ static void timerHandler( int sig, siginfo_t *si, void *uc )
     tidp = si->si_value.sival_ptr;
 
     if ( *tidp == firstTimerID )
-    // if signal originated by first timer then call function firstCB()
-        firstCB();
+    // if signal originated by first timer then call function MonitorIOLines()
+        MonitorIOLines();
     else if ( *tidp == secondTimerID )
-    // if signal originated by second timer then call function secondCB()
-        secondCB();
+    // if signal originated by second timer then call function Read_TCP_Data()
+        Read_TCP_Data();
     else if ( *tidp == thirdTimerID )
-    // if signal originated by third timer then call function thirdCB()
-      thirdCB();
+    // if signal originated by third timer then call function RestartApplication()
+      RestartApplication();
 }
 
 // function to make timers and assign the signals with the timer expires ; returns 0 on success and -1 on failure
@@ -325,7 +325,7 @@ static int srtSchedule( void )
 
 
 // below is the main signal that will set flags
-void sigalrm_handler( int sig )
+void tick_handler( int sig )
 {
     // below updates every second
     //printf(" time_tracker_sec=%d and time_tracker_min=%d \n\n",time_tracker_sec,time_tracker_min);
@@ -450,7 +450,7 @@ void send_tcp_data(void *data)
     
     printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
     // call remove substring to remove -1 which indicates values not avaialable
-    removeSubstring(data,"-1.000000");    
+    filterString(data,"-1.000000");    
     printf("data being send is %s of length %d \n\n",data,strlen(data));
     ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
@@ -470,7 +470,7 @@ void send_tcp_data(void *data)
 }
 
 // function to remove Not Available values
-void removeSubstring(char *s,const char *toremove)
+void filterString(char *s,const char *toremove)
 {
   while( s=strstr(s,toremove) )
     memmove(s,s+strlen(toremove),1+strlen(s+strlen(toremove)));
@@ -541,7 +541,7 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
     if (ret!=0)
     {
         REG5=-1;
-    }
+    } 
    ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",4,1,&REG6,timestamp); 
     printf("Tag6 value :%lf\n",REG6); 
 
@@ -1049,10 +1049,10 @@ void  INThandler(int sig)
 
 char  c;
     signal(sig, SIG_IGN);
-    printf("Application Closing Gracefully\n");
-char  datatosend[] ="Application Stopped running \r";
-    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
-    pthread_join(thread_id,NULL);
+    printf("Application Closing\n");
+//char  datatosend[] ="Application Stopped running \r";
+//    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+//    pthread_join(thread_id,NULL);
     //setting stop to 1 will exit the worker loop
     stop=1;
 
@@ -1173,11 +1173,7 @@ double values;
     
     db_size=Database_used_size();
     printf("database  is %lf \n",db_size);
-    ret = read_tag_all_data_from_db("Tag0","DSEPANEL",1,1,"/tmp/tag0");  
-if (ret<0)
-{
-printf("Error occured \n");
-}
+
     
     sleep(3);
     long pid_value = (long)getpid();
@@ -1204,45 +1200,31 @@ printf("Error occured \n");
     //obtain imei number
     ret = get_imei (imei, 15);
 
-    // create a signal and assign the alarm handler
+    // create a signal/alarm to tick every second and assign the tick handler
     struct sigaction sact;
     memset(&sact,0 , sizeof sact);
     sigemptyset (&sact.sa_mask);
     sact.sa_flags = 0;
-    sact.sa_handler = sigalrm_handler;
+    sact.sa_handler = tick_handler;
     sigaction(SIGALRM, &sact, NULL);
 
 
-    /* if any argument is passed then points to local
-    if(argc>1)
-    {
-        // to give info to the user on terminal  
-        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and shouf report to local \n", script_ver, imei, logger_id);
-        // if first start then set hostname and port
-        server_hostname = "qaroam3.roamworks.com";
-        server_port = 6102; 
-        // conncect tcp
-        connect_tcp();  
-    }
 
-    */
-        // if anything else is passed then points to server 
-        // to give info to the user on terminal  
-        printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and shouf report to the server\n", script_ver, imei, logger_id);
-        connect_tcp();   
+    printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
+    connect_tcp();   
     
     
     //sends the login message
     ready_device();
 
-    // to capture the cntrl+c
+    // to capture the cntrl+c INTerupts
     signal(SIGINT, INThandler);
 
     //start the auxillary timers
     ret=srtSchedule();
     if (ret==0)
     {
-    printf("THE AUXILLARY TIMERS HAVE STARTED\n");
+    printf("THE AUXILLARY TIMERS HAVE STARTED, monitor io lines, read tcp data , restart application\n");
     }
     
     alarm(1);  /* Request SIGALRM each second*/
@@ -1260,10 +1242,6 @@ printf("Error occured \n");
     
     sleep(2);
 
-    // check ignition and power
-    // return -1 for power loss
-    // return 0 for ignition off
-    //  return 1 for ignition on
 
     switch(do_function)
     {
@@ -1292,27 +1270,27 @@ printf("Error occured \n");
     case 4:
             printf("Ignition OFF\n");
             send_ignition_off();
-read_per();
-pers_ign_state=ign_state;
+            read_per();
+            pers_ign_state=ign_state;
             do_function=0;
-write_per();
+            write_per();
             break;
 
     case 5:
             printf("Ignition ON\n");
             send_ignition_on();
-read_per();
-pers_ign_state=ign_state;
+            read_per();
+            pers_ign_state=ign_state;
             do_function=0;
-write_per();
+            write_per();
             break;
     
     case 6:
             printf("Power Loss\n");
             send_power_loss();
             do_function=0;
-read_per();
-pers_pwr_state=pwr_state;
+            read_per();
+            pers_pwr_state=pwr_state;
             ret=write_per();
             break;
 
@@ -1320,8 +1298,8 @@ pers_pwr_state=pwr_state;
             printf("Power Restore\n");
             send_power_restore();
             do_function=0;
-read_per();
-pers_pwr_state=pwr_state;
+            read_per();
+            pers_pwr_state=pwr_state;
             ret=write_per();
             break;
     
@@ -1362,6 +1340,7 @@ pers_pwr_state=pwr_state;
     printf (" %d is the return for shutdown \n",ret);
     ret= close(sockfd);
     printf (" %d is the return for close \n",ret);
+    printf("The application has closed \n");
 
 
    
@@ -1369,7 +1348,6 @@ pers_pwr_state=pwr_state;
     return 0;
 }
 
-//// ignore below ////
-// documentation to be created //
+
 
 

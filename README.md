@@ -36,6 +36,9 @@ Added logic for application controlled restart
 0.1.18
 Changed pollling modbus logic, fixed a bug in numbering of registers
 
+0.1.18.1
+Renamed function names and some cleaning of unused lines
+
 Task to do
 Delete database periodically to control usage 
     ? When to delete - after every week 
