@@ -39,6 +39,10 @@ Changed pollling modbus logic, fixed a bug in numbering of registers
 0.1.18.1
 Renamed function names and some cleaning of unused lines
 
+0.1.18.3
+Added keep alive for preventing tcp disconnect
+corrected fix logic always being false even with valid fix
+
 Task to do
 Delete database periodically to control usage 
     ? When to delete - after every week 
