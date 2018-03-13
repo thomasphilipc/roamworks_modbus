@@ -72,6 +72,7 @@ int fix=0,course=-1,speed=-1,power,in7,bat=-1;
 double REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG9=-1,REG10=-1,REG11=-1,REG14=-1,REG15=-1;
 double REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1;
 double REG8=-1,REG12=-1,REG16=-1,REG7=-1,REG17=-1,REG13=-1;
+double REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
 double dop=-1,satsused=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
@@ -501,7 +502,7 @@ int res,ret1;
 
 printf("entered polling section for modbus_data\n");
 REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
-REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1;
+REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
 
     double value;
     char timestamp[26];
@@ -512,342 +513,213 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
     //get the modbus data values and set to -1 if not available
 
 
-    ret = read_tag_latest_data_from_db("Tag0","DSEPANEL",1,1,&REG20,timestamp);  
+    ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&REG20,timestamp);  
     printf("OilPressure : %lf\n",REG20);  
     if (ret!=0)
     {
         REG20=-1;
     } 
 
-    ret = read_tag_latest_data_from_db("Tag1","DSEPANEL",1,1,&REG0,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag0","DSEPANEL",1,1,&REG0,timestamp); 
     printf("CoolantTemp value : %lf\n",REG0);  
     if (ret!=0)
     {
         REG0=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag2","DSEPANEL",1,1,&REG2,timestamp); 
-    printf("(NR)OilTemp value :%lf\n",REG2); 
-    if (ret!=0)
-    {
-        REG2=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("FuelLevel value :%lf\n",REG24); 
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",1,1,&REG4,timestamp); 
-    printf("(NR)ChargeAltVolt value :%lf\n",REG4); 
-
-    if (ret!=0)
-    {
-        REG4=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",1,1,&REG5,timestamp);  
-    printf("(NR)BatteryVoltage value :%lf\n",REG5); 
- 
-    if (ret!=0)
-    {
-        REG5=-1;
-    } 
-   ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",1,1,&REG0,timestamp); 
-    printf("(second)CoolantTemp value :%lf\n",REG0); 
-
-    if (ret!=0)
-    {
-        REG0=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&REG1,timestamp); 
-    printf("EngineSpeed value :%lf\n",REG1); 
-
+    ret = read_tag_latest_data_from_db("Tag1","DSEPANEL",1,1,&REG1,timestamp); 
+    printf("Engine RPM :%lf\n",REG1); 
     if (ret!=0)
     {
         REG1=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&REG2,timestamp);  
-    printf("GenrtorFreq value :%lf\n",REG2);   
-
+    ret = read_tag_latest_data_from_db("Tag2","DSEPANEL",1,1,&REG2,timestamp); 
+    printf("Generator Frequency :%lf\n",REG2); 
     if (ret!=0)
     {
         REG2=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&REG8,timestamp); 
-    printf("GenrtorL1NVolt value :%lf\n",REG8); 
+    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&REG8,timestamp); 
+    printf("Phase A line to Neutral V value :%lf\n",REG8); 
 
-    if (ret<0)
+    if (ret!=0)
     {
         REG8=-1;
     } 
-
-    ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",1,1,&REG12,timestamp); 
-    printf("GenrtorL2NVolt value :%lf\n",REG12); 
-
+    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&REG12,timestamp);  
+    printf("Phase B line to Neutral V value :%lf\n",REG12); 
+ 
     if (ret!=0)
     {
         REG12=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&REG16,timestamp); 
-    printf("GenrtorL3NVolt value :%lf\n",REG16); 
+   ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&REG16,timestamp); 
+    printf("Phase C line to Neutral V value :%lf\n",REG16); 
 
     if (ret!=0)
     {
         REG16=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&REG7,timestamp);  
-    printf("GenrtorL1L2Volt value :%lf\n",REG7);   
+    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&REG7,timestamp); 
+    printf("Phase AB line to line V value :%lf\n",REG7); 
 
-    if (ret<0)
+    if (ret!=0)
     {
         REG7=-1;
     } 
-
-    ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",1,1,&REG11,timestamp); 
-    printf("TGenrtorL2L3Volt value :%lf\n",REG11); 
+    ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&REG11,timestamp);  
+    printf("Phase BC line to line Vvalue :%lf\n",REG11);   
 
     if (ret!=0)
     {
         REG11=-1;
     } 
     ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&REG15,timestamp); 
-    printf("GenrtorL3L1Volt value :%lf\n",REG15); 
+    printf("Phase CA line to line V value :%lf\n",REG15); 
 
     if (ret<0)
     {
         REG15=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&REG9,timestamp); 
-    printf("GenrtorL1Curr value :%lf\n",REG9); 
+
+    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&REG9,timestamp); 
+    printf("Phase A current value :%lf\n",REG9); 
 
     if (ret!=0)
     {
         REG9=-1;
     } 
-
-    ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&REG13,timestamp); 
-    printf("GenrtorL2Curr value :%lf\n",REG13); 
+    ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&REG13,timestamp); 
+    printf("Phase B current value :%lf\n",REG13); 
 
     if (ret!=0)
     {
         REG13=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag18","DSEPANEL",1,1,&REG21,timestamp); 
-    printf("GenrtorL3Curr value :%lf\n",REG17); 
+        ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&REG17,timestamp);  
+    printf("Phase C current value :%lf\n",REG17);   
 
-    if (ret!=0)
+    if (ret<0)
     {
-        REG21=-1;
+        REG17=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",1,1,&REG22,timestamp); 
-    printf("GenrtorEthCurr value :%lf\n",REG22); 
+
+    ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&REG22,timestamp); 
+    printf("Fuel Consumption Rate value :%lf\n",REG22); 
 
     if (ret!=0)
     {
         REG22=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&REG23,timestamp); 
-    printf("GenrtorL1Watts value :%lf\n",REG23);    
+    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",1,1,&REG24,timestamp); 
+    printf("Current Fuel level Percent value :%lf\n",REG24); 
+
+    if (ret<0)
+    {
+        REG24=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",2,1,&REG3,timestamp); 
+    printf("Engine % Torque value :%lf\n",REG3); 
+
+    if (ret!=0)
+    {
+        REG3=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",4,1,&REG21,timestamp); 
+    printf("Engine Hour Meter value :%lf\n",REG21); 
+
+    if (ret!=0)
+    {
+        REG21=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",4,1,&REG23,timestamp); 
+    printf("Total Fuel used value :%lf\n",REG23); 
 
     if (ret!=0)
     {
         REG23=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("GenrtorL2Wattsvalue :%lf\n",REG24); 
+    ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",5,1,&REG19,timestamp); 
+    printf("DTC value :%lf\n",REG19); 
 
     if (ret!=0)
     {
-        REG24=-1;
+        REG19=-1;
     } 
-     ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",1,1,&REG16,timestamp); 
-    printf("GenrtorL3Watts value :%lf\n",REG16); 
-
-    if (ret<0)
-    {
-        REG16=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",1,1,&REG17,timestamp); 
-    printf("GenrtorCurrLag value :%lf\n",REG17); 
+    ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",1,1,&REG25,timestamp); 
+    printf("DTC1extra value :%lf\n",REG25);    
 
     if (ret!=0)
     {
-        REG17=-1;
+        REG25=-1;
     } 
-
-    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",1,1,&REG20,timestamp); 
-    printf("MainsFreq value :%lf\n",REG20); 
+    ret = read_tag_latest_data_from_db("Tag26","DSEPANEL",1,1,&REG26,timestamp); 
+    printf("Rsvd value :%lf\n",REG26); 
 
     if (ret!=0)
     {
-        REG20=-1;
+        REG26=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",1,1,&REG8,timestamp); 
-    printf("MainsL1NVolt value :%lf\n",REG8); 
+        ret = read_tag_latest_data_from_db("Tag27","DSEPANEL",1,1,&REG27,timestamp); 
+    printf("Rsvd value :%lf\n",REG27);    
 
     if (ret!=0)
     {
-        REG8=-1;
+        REG27=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag26","DSEPANEL",1,1,&REG12,timestamp); 
-    printf("MainsL2NVolt value :%lf\n",REG12); 
+    ret = read_tag_latest_data_from_db("Tag28","DSEPANEL",1,1,&REG28,timestamp); 
+    printf("Rsvd :%lf\n",REG28); 
 
     if (ret!=0)
     {
-        REG12=-1;
+        REG28=-1;
     } 
-        ret = read_tag_latest_data_from_db("Tag27","DSEPANEL",1,1,&REG16,timestamp); 
-    printf("MainsL3NVolt value :%lf\n",REG16);    
+       ret = read_tag_latest_data_from_db("Tag29","DSEPANEL",1,1,&REG29,timestamp); 
+    printf("Rsvd :%lf\n",REG29); 
 
     if (ret!=0)
     {
-        REG16=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag28","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL1L2Volt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-       ret = read_tag_latest_data_from_db("Tag29","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL2L3Volt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
+        REG29=-1;
     }
-    ret = read_tag_latest_data_from_db("Tag30","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL3L1Volt :%lf\n",REG24); 
+    ret = read_tag_latest_data_from_db("Tag30","DSEPANEL",1,1,&REG30,timestamp); 
+    printf("Rsvd :%lf\n",REG30); 
+    if (ret!=0)
+    {
+        REG30=-1;
+    }
+
+    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",3,1,&REG4,timestamp); 
+    printf("GeneratorTotalPower Watts :%lf\n",REG4); 
 
     if (ret!=0)
     {
-        REG24=-1;
-    }     
-    ret = read_tag_latest_data_from_db("Tag31","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainVltPhseLag :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
+        REG4=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag32","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("GenrtorPhseRot :%lf\n",REG24); 
+       ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",3,1,&REG5,timestamp); 
+    printf("GenPhaseApower :%lf\n",REG5); 
 
     if (ret!=0)
     {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag33","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsCurrLag :%lf\n",REG24); 
+        REG5=-1;
+    }
+    ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",3,1,&REG6,timestamp); 
+    printf("GenPhaseBPower :%lf\n",REG6); 
+    if (ret!=0)
+    {
+        REG6=-1;
+    }
+    ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",3,1,&REG10,timestamp); 
+    printf("GenPhaseCPower :%lf\n",REG10); 
+    if (ret!=0)
+    {
+        REG10=-1;
+    }
+    ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",3,1,&REG14,timestamp); 
+    printf("GeneratorTotalPower VA :%lf\n",REG14); 
 
     if (ret!=0)
     {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag34","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL1Curr :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag35","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL2Curr :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag36","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL3Curr :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag37","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsEthCurr :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag38","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL1Watts :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag39","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsCurrLag :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag40","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("MainsL3Watts :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag41","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusCurrLag :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag42","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusFreq :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag43","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusL1NVolt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag44","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusL2NVolt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag45","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusL3NVolt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag46","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusL1L2Volt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag47","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusL2L3Volt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag48","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("BusL3L1Volt :%lf\n",REG24); 
-
-    if (ret!=0)
-    {
-        REG24=-1;
+        REG14=-1;
     } 
 
 
