@@ -76,6 +76,7 @@ double REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
 double dop=-1,satsused=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
+double lastknownlat=0.0,lastknownlon=0.0,lastknownalt=0.0;
 //below are various buffers used for read write and db polling
 char  datatosend[1024]; // write
 char buff[100];         // time
@@ -783,6 +784,8 @@ int ignstate;
 // function to update the basic information time and gps info
 void update_info(void)
 {
+
+
     int ret;
 
     // power and ignition state   
@@ -804,26 +807,27 @@ void update_info(void)
     snprintf(date, sizeof(date), "%s",buff);
     date[strlen(date)] = '\0';  
 
+    ret=additional_gps_data();
     fix=1;
     // obtain gps info as lat,lon,alt
 
     ret = get_gps_latitude (&lat);
     if (ret < 0)
     {
-        lat=0.0;
+        lat=lastknownlat;
         fix=0;
     }
 
     ret = get_gps_longitude (&lon);		  
     if (ret < 0)
     {
-        lon=0.0;
+        lon=lastknownlon;
     }
 
     ret = get_gps_altitude (&alt);
     if (ret < 0)
     {
-        alt=0.0;
+        alt=lastknownalt;
     } 
 
 
@@ -926,6 +930,7 @@ void send_ignition_on(void)
 
     update_info();
 
+
     char ign_command[1024];
     printf("sending ignition on\n");
 
@@ -971,10 +976,11 @@ void ready_device(void)
  
 }
 
+
 // function to check tcp status
 int check_tcp_status(void)
 {
-
+int ret;
 int error = 0;
 socklen_t len = sizeof (error);
 int retval = getsockopt (sockfd, SOL_SOCKET, SO_ERROR, &error, &len);
@@ -990,7 +996,20 @@ if (error != 0) {
     fprintf(stderr, "socket error: %s\n", strerror(error));
      return -1;
 }
-  return 0;  
+
+char *value;
+
+ret=get_cellular_ip(value, 20);
+printf("Ret : %d\n",ret);
+if (ret>=0)
+{
+    printf("Cell Ip is %s \n",value);
+      return 0; 
+}
+else
+    return -1;
+
+ 
 }
 
 // function to establist tcp connection
@@ -1249,23 +1268,535 @@ int read_per()
 }
 
 
+// the function  reads data from the gpsfile 
+int additional_gps_data()
+{
+
+printf(" Reading additional GPS data \n");
+ char line[1024];
+    FILE *fp;
+
+    fp = fopen("/tmp/gpsfile","r");
+    int linenum=1;
+
+    if (fp)
+    {
+        while (fgets(line,1024,fp))
+        {
+            //printf("%s is line number %d \n",line,linenum);
+            char* t;
+            t = strtok(line,"\t");
+            
+            int i=1,a;            
+            while (i<3)
+            {
+            
+            switch (i)
+            {
+            case 1: 
+                    break;
+            case 2:
+
+                    switch(linenum)
+{   
+                    case 1:
+                    printf("Time is %s \n",t);
+                            break;
+                    case 2:
+                    printf("Latitude is %s \n",t);
+                            break;
+                    case 3:
+                    printf("N/S is %s \n",t);
+                            break;
+                    case 4:
+                    printf("Longitude is %s \n",t);
+                            break;
+                    case 5:
+                    printf("E/W is %s \n",t);
+
+                            break;
+                    case 6:
+                    printf("PositionFix is %s \n",t);
+                            break;
+                    case 7:
+                    printf("Number of Satellites is %s \n",t);
+                            satsused=atoi(t);
+                            break;
+                    case 8:
+                    printf("Hdop is %s \n",t);
+                            dop=atoi(t);
+                            break;
+                    case 9:
+                    printf("Altitude is %s \n",t);
+                            break;
+                    case 10:
+                    printf("Status is %s \n",t);
+                            break;
+}
+                   break;
+
+            }
+            t = strtok (NULL,",");
+            i++;
+            }  
+linenum++;
+                                                                                                                                                            
+        }        
+        fclose(fp);  
+
+  
+    }
+    else
+    printf("No fix available \n");
+
+return 0;
+}
+
+void get_cellular_data(void)
+{
+
+printf("Entered function to get cellular data\n");
+
+int ret=0;
+int signal_strength=0;
+int tcp_status=-1;
+char value[]="";
+char value2[]="";
+
+unsigned int size=50;
+
+
+
+tcp_status=get_cellular_status();
+printf("Ret : %d\n",tcp_status);
+if (tcp_status>=0)
+{
+printf("Cellular status is %d\n",tcp_status);
+}
+
+ret=get_cellular_ip(value, 20);
+printf("Ret : %d\n",ret);
+if (ret>=0){
+printf("Cell Ip is %s \n",value);
+}
+
+ret=get_operatorname(value,15);
+printf("Ret : %d\n",ret);
+if (ret>=0)
+{
+printf("Operator Name is %s\n",value);
+}
+
+signal_strength=get_signal_strength();
+printf("Ret : %d\n",signal_strength);
+if (signal_strength>=0)
+{
+printf("signal strength is %d\n",signal_strength);
+}
+
+ret=get_imsi(value,15);
+printf("Ret : %d\n",ret);
+if (ret>=0)
+{
+printf("IMSI is %s\n",value);
+}
+
+ret=get_cellid(value,size);
+printf("Ret : %d\n",ret);
+if (ret>=0)
+{printf("Cellid is %s\n",value);
+}
+
+ret=get_gprs_lac(value,size);
+printf("Ret : %d\n",ret);
+if (ret>=0)
+{
+printf("lac is %s ",value);
+}
+
+
+
+
+ret=get_networkstatus(value2,14);
+printf("Ret : %d\n",ret);
+if (ret>=0){
+printf("Network status is %s\n",value2);
+}
+
+
+
+}
+
+void parse_alarm(int state)
+{
+
+switch(state)
+{
+   case 0: 
+            printf("Disabled Alarm\n");
+            break;
+   case 1: 
+            printf("Not Active Alarm\n");
+            break;
+   case 2: 
+            printf("Warning Alarm\n");
+            break;
+   case 3: 
+            printf("Shutdown Alarm\n");
+            break;
+   case 4: 
+            printf("Electrical Trip Alarm\n");
+            break;
+   case 8: 
+            printf("Inactive Alarm\n");
+            break;
+   case 9: 
+            printf("Inactive Alarm\n");
+            break;
+
+   case 10: 
+            printf("Active Alarm\n");
+            break;
+
+   case 15: 
+            printf("Unimplemented Alarm\n");
+            break;
+   default: 
+
+            break;
+
+
+
+}
+}
+
+
+void coverttonibbles( int recievedint)
+{
+
+int shifted1 = (recievedint >> 12);
+printf("The 1st nibble value is %d \n",shifted1);
+parse_alarm(shifted1);
+
+int shifted2 = ((recievedint & 3840 )>> 8 );
+printf("The 2nd nibble value is %d \n",shifted2);
+parse_alarm(shifted2);
+
+int shifted3 = ((recievedint & 240) >> 4);
+printf("The 3rd nibble value is %d \n",shifted3);
+parse_alarm(shifted3);
+
+int shifted4 = (recievedint & 15);
+printf("The 4th nibble value is %d \n",shifted4);
+parse_alarm(shifted4);
+
+}
+
+
+void poll_alarms(void)
+{
+
+int ret;
+
+
+
+printf("entered section to read alarms\n");
+double ALM0=-1,ALM1=-1,ALM2=-1,ALM3=-1,ALM4=-1,ALM5=-1,ALM6=-1,ALM7=-1,ALM8=-1,ALM9=-1,ALM10=-1,ALM11=-1,ALM12=-1,ALM13=-1,ALM14=-1,ALM15=-1;
+double ALM16=-1,ALM17=-1,ALM18=-1,ALM19=-1,ALM20=-1,ALM21=-1,ALM22=-1,ALM23=-1,ALM24=-1,ALM25=-1,ALM26=-1,ALM27=-1,ALM28=-1,ALM29=-1,ALM30=-1;
+
+    double value;
+    char timestamp[26];
+
+
+// variables to prepare periodic information 
+ 
+    //get the modbus data values and set to -1 if not available
+
+
+
+    ret = read_tag_latest_data_from_db("Alm0","DSEPANEL",5,1,&ALM0,timestamp); 
+    printf("CoolantTemp value : %lf\n",ALM0);  
+    if (ret!=0)
+    {
+        ALM0=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Alm1","DSEPANEL",5,1,&ALM1,timestamp); 
+    printf("Engine RPM :%lf\n",ALM1); 
+    if (ret!=0)
+    {
+        ALM1=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Alm2","DSEPANEL",5,1,&ALM2,timestamp); 
+    printf("Generator Frequency :%lf\n",ALM2); 
+    if (ret!=0)
+    {
+        ALM2=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Alm3","DSEPANEL",5,1,&ALM3,timestamp); 
+    printf("Engine % Torque value :%lf\n",ALM3); 
+
+    if (ret!=0)
+    {
+        ALM3=-1;
+    }
+
+    ret = read_tag_latest_data_from_db("Alm4","DSEPANEL",5,1,&ALM4,timestamp); 
+    printf("GeneratorTotalPower Watts :%lf\n",ALM4); 
+
+    if (ret!=0)
+    {
+        ALM4=-1;
+    } 
+       ret = read_tag_latest_data_from_db("Alm5","DSEPANEL",5,1,&ALM5,timestamp); 
+    printf("GenPhaseApower :%lf\n",ALM5); 
+
+    if (ret!=0)
+    {
+        ALM5=-1;
+    }
+    ret = read_tag_latest_data_from_db("Alm6","DSEPANEL",5,1,&ALM6,timestamp); 
+    printf("GenPhaseBPower :%lf\n",ALM6); 
+    if (ret!=0)
+    {
+        ALM6=-1;
+    }
+
+
+    ret = read_tag_latest_data_from_db("Alm7","DSEPANEL",5,1,&ALM7,timestamp); 
+    printf("Phase AB line to line V value :%lf\n",ALM7); 
+
+    if (ret!=0)
+    {
+        ALM7=-1;
+    }     
+
+    ret = read_tag_latest_data_from_db("Alm8","DSEPANEL",5,1,&ALM8,timestamp); 
+    printf("Phase A line to Neutral V value :%lf\n",ALM8); 
+
+    if (ret!=0)
+    {
+        ALM8=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Alm9","DSEPANEL",5,1,&ALM9,timestamp); 
+    printf("Phase A current value :%lf\n",ALM9); 
+
+    if (ret!=0)
+    {
+        ALM9=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Alm10","DSEPANEL",5,1,&ALM10,timestamp); 
+    printf("GenPhaseCPower :%lf\n",ALM10); 
+    if (ret!=0)
+    {
+        ALM10=-1;
+    }
+    ret =
+
+    ret = read_tag_latest_data_from_db("Alm11","DSEPANEL",5,1,&ALM11,timestamp);  
+    printf("Phase BC line to line Vvalue :%lf\n",ALM11);   
+
+    if (ret!=0)
+    {
+        ALM11=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Alm12","DSEPANEL",5,1,&ALM12,timestamp);  
+    printf("Phase B line to Neutral V value :%lf\n",ALM12); 
+ 
+    if (ret!=0)
+    {
+        ALM12=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Alm13","DSEPANEL",5,1,&ALM13,timestamp); 
+    printf("Phase B current value :%lf\n",ALM13); 
+
+    if (ret!=0)
+    {
+        ALM13=-1;
+    } 
+
+    read_tag_latest_data_from_db("Alm14","DSEPANEL",5,1,&ALM14,timestamp); 
+    printf("GeneratorTotalPower VA :%lf\n",ALM14); 
+
+    if (ret!=0)
+    {
+        ALM14=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Alm15","DSEPANEL",5,1,&ALM15,timestamp); 
+    printf("Phase CA line to line V value :%lf\n",ALM15); 
+
+    if (ret<0)
+    {
+        ALM15=-1;
+    } 
+
+   ret = read_tag_latest_data_from_db("Alm16","DSEPANEL",5,1,&ALM16,timestamp); 
+    printf("Phase C line to Neutral V value :%lf\n",ALM16); 
+
+    if (ret!=0)
+    {
+        ALM16=-1;
+    } 
+
+
+
+    ret = read_tag_latest_data_from_db("Alm17","DSEPANEL",5,1,&ALM17,timestamp);  
+    printf("Phase C current value :%lf\n",ALM17);   
+
+    if (ret<0)
+    {
+        ALM17=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Alm18","DSEPANEL",5,1,&ALM18,timestamp);  
+    printf("Phase C current value :%lf\n",ALM18);   
+
+    if (ret<0)
+    {
+        ALM17=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Alm19","DSEPANEL",5,1,&ALM19,timestamp);  
+    printf("Phase C current value :%lf\n",ALM19);   
+
+    if (ret<0)
+    {
+        ALM17=-1;
+    } 
+
+    
+        ret = read_tag_latest_data_from_db("Alm20","DSEPANEL",5,1,&ALM20,timestamp);  
+    printf("OilPressure : %lf\n",ALM20);  
+    if (ret!=0)
+    {
+        ALM20=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Alm21","DSEPANEL",5,1,&ALM21,timestamp); 
+    printf("Engine Hour Meter value :%lf\n",ALM21); 
+
+    if (ret!=0)
+    {
+        ALM21=-1;
+    } 
+
+    
+    ret = read_tag_latest_data_from_db("Alm22","DSEPANEL",5,1,&ALM22,timestamp); 
+    printf("Fuel Consumption Rate value :%lf\n",ALM22); 
+
+    if (ret!=0)
+    {
+        ALM22=-1;
+    }     
+
+    ret = read_tag_latest_data_from_db("Alm23","DSEPANEL",5,1,&ALM23,timestamp); 
+    printf("Total Fuel used value :%lf\n",ALM23); 
+
+    if (ret!=0)
+    {
+        ALM23=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Alm24","DSEPANEL",5,1,&ALM24,timestamp); 
+    printf("Current Fuel level Percent value :%lf\n",ALM24); 
+
+    if (ret<0)
+    {
+        ALM24=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Alm25","DSEPANEL",5,1,&ALM25,timestamp); 
+    printf("DTC1extra value :%lf\n",ALM25);    
+
+    if (ret!=0)
+    {
+        ALM25=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Alm26","DSEPANEL",5,1,&ALM26,timestamp); 
+    printf("Rsvd value :%lf\n",ALM26); 
+
+    if (ret!=0)
+    {
+        ALM26=-1;
+    } 
+        ret = read_tag_latest_data_from_db("Alm27","DSEPANEL",5,1,&ALM27,timestamp); 
+    printf("Rsvd value :%lf\n",ALM27);    
+
+    if (ret!=0)
+    {
+        ALM27=-1;
+    } 
+    ret = read_tag_latest_data_from_db("Alm28","DSEPANEL",5,1,&ALM28,timestamp); 
+    printf("Rsvd :%lf\n",ALM28); 
+
+    if (ret!=0)
+    {
+        ALM28=-1;
+    } 
+       ret = read_tag_latest_data_from_db("Alm29","DSEPANEL",5,1,&ALM29,timestamp); 
+    printf("Rsvd :%lf\n",ALM29); 
+
+    if (ret!=0)
+    {
+        ALM29=-1;
+    }
+    ret = read_tag_latest_data_from_db("Alm30","DSEPANEL",5,1,&ALM30,timestamp); 
+    printf("Rsvd :%lf\n",ALM30); 
+    if (ret!=0)
+    {
+        ALM30=-1;
+    }
+
+
+
+
+    update_info();
+    // prepare the format of the periodic CAN message
+    snprintf(datatosend, sizeof(datatosend), "$ALM 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,ALM0,ALM1,ALM2,ALM3,ALM4,ALM5,ALM6,ALM7,ALM8,ALM9,ALM10,ALM11,ALM12,ALM13,ALM14,ALM15,ALM16,ALM17,ALM18,ALM19,ALM20,ALM21,ALM22,ALM23,ALM24);
+
+    //calling send tcp to send the data
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+
+}
+
+
+
 // MAIN PROGRAM CALL STARTS BELOW
 
 int main (int argc, char *argv[])
-{   
+{ 
+
+printf(" argc is %d \n",argc); 
+
+if((argc>1) && atoi(argv[1]) == 0)
+{
+additional_gps_data();
+}
+else if( (argc>1) && atoi(argv[1]) == 1)
+{
+get_cellular_data();
+}
+else 
+{
 
 char* timestamps;
 int ret;
 double values;
      sleep(3);   
-    //Database_used_size();
-    printf("database  is %lf \n",Database_used_size());
 
-    
-
-    long pid_value; 
-        pid_value= (long)getpid();
-    printf("Application running on pid : %lf \n",pid_value);
     printf("Initialization in process \n");   
     ret=read_per();
     ign_state=pers_ign_state;
@@ -1281,6 +1812,8 @@ double values;
 
     // sleep to wait for initialisation
     sleep(3);
+
+    
     
 
     //get the loggerid - this will be from the CSV file uploaded to master_modbus
@@ -1438,10 +1971,15 @@ double values;
     printf("The application has closed \n");
 
 
-   
+
+}  
+
     exit(0);
+
     return 0;
+
 }
+
 
 
 
