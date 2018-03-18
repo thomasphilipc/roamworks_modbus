@@ -3,17 +3,17 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 0.1.18.4         //
+//  application version: 1.0.0_1         //
 //  updated last 28/02/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
 /////////////////////////////////////////
 
-//18.4 
-//add connectivity error handle
-// change modbus master csv based script change
-// changed persistance db name
+//1.0.0_1
+//add last known gps info if new not avaialable (avoid 0,0)
+//include num of sat and hdop information
+//some prep work for 1.1.0 ( Alarm ) 
 
 
 
@@ -43,7 +43,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v0.1.18.4"
+#define script_ver "v1.0.0"
 
 
 // below int set to 1 will exit out the application
@@ -619,7 +619,7 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
         REG24=-1;
     } 
     ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",2,1,&REG3,timestamp); 
-    printf("Engine % Torque value :%lf\n",REG3); 
+    printf("Engine Torque value :%lf\n",REG3); 
 
     if (ret!=0)
     {
@@ -640,89 +640,36 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
     {
         REG23=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",5,1,&REG19,timestamp); 
-    printf("DTC value :%lf\n",REG19); 
+    //ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",5,1,&REG19,timestamp); 
+    //printf("DTC value :%lf\n",REG19); 
 
-    if (ret!=0)
-    {
-        REG19=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",1,1,&REG25,timestamp); 
-    printf("DTC1extra value :%lf\n",REG25);    
-
-    if (ret!=0)
-    {
-        REG25=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag26","DSEPANEL",1,1,&REG26,timestamp); 
-    printf("Rsvd value :%lf\n",REG26); 
-
-    if (ret!=0)
-    {
-        REG26=-1;
-    } 
-        ret = read_tag_latest_data_from_db("Tag27","DSEPANEL",1,1,&REG27,timestamp); 
-    printf("Rsvd value :%lf\n",REG27);    
-
-    if (ret!=0)
-    {
-        REG27=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag28","DSEPANEL",1,1,&REG28,timestamp); 
-    printf("Rsvd :%lf\n",REG28); 
-
-    if (ret!=0)
-    {
-        REG28=-1;
-    } 
-       ret = read_tag_latest_data_from_db("Tag29","DSEPANEL",1,1,&REG29,timestamp); 
-    printf("Rsvd :%lf\n",REG29); 
-
-    if (ret!=0)
-    {
-        REG29=-1;
-    }
-    ret = read_tag_latest_data_from_db("Tag30","DSEPANEL",1,1,&REG30,timestamp); 
-    printf("Rsvd :%lf\n",REG30); 
-    if (ret!=0)
-    {
-        REG30=-1;
-    }
-
+    //if (ret!=0)
+    //{
+    //    REG19=-1;
+    //} 
+  
     ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",3,1,&REG4,timestamp); 
-    printf("GeneratorTotalPower Watts :%lf\n",REG4); 
+    printf("Average L to L Voltage :%lf\n",REG4); 
 
     if (ret!=0)
     {
         REG4=-1;
     } 
        ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",3,1,&REG5,timestamp); 
-    printf("GenPhaseApower :%lf\n",REG5); 
+    printf("Average L to N Voltage :%lf\n",REG5); 
 
     if (ret!=0)
     {
         REG5=-1;
     }
     ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",3,1,&REG6,timestamp); 
-    printf("GenPhaseBPower :%lf\n",REG6); 
+    printf("Average AC RMS Current :%lf\n",REG6); 
     if (ret!=0)
     {
         REG6=-1;
     }
-    ret = read_tag_latest_data_from_db("Tag10","DSEPANEL",3,1,&REG10,timestamp); 
-    printf("GenPhaseCPower :%lf\n",REG10); 
-    if (ret!=0)
-    {
-        REG10=-1;
-    }
-    ret = read_tag_latest_data_from_db("Tag14","DSEPANEL",3,1,&REG14,timestamp); 
-    printf("GeneratorTotalPower VA :%lf\n",REG14); 
 
-    if (ret!=0)
-    {
-        REG14=-1;
-    } 
-
+    
 
     
     //CANP 36 &(IMEI),&(Time),&(Date),&(Lat),&(Lon),&(Fix),&(Course),&(Speed),&(NavDist),&(Alt),&(Power),&(Bat),&(IN7),&(Out0),&(DOP),&(SatsUsed), &(REG0),&(REG1),&(REG2),&(REG3),&(REG4),&(REG5),&(REG6),&(REG7),&(REG8),&(REG9),&(REG10),&(REG11),&(REG12),&(REG13),&(REG14),&(REG15),& (REG16),&(REG17),&(REG18),&(REG19),&(REG20),&(REG21),&(REG22),&(REG23),&(REG24)
@@ -831,6 +778,10 @@ void update_info(void)
     } 
 
 
+    // assigning the lastknown values with the current values
+    lastknownlat= lat;
+    lastknownlon=lon;
+    lastknownalt=alt;
 
 }
 
@@ -1324,7 +1275,7 @@ printf(" Reading additional GPS data \n");
                             break;
                     case 8:
                     printf("Hdop is %s \n",t);
-                            dop=atoi(t);
+                            dop=atof(t);
                             break;
                     case 9:
                     printf("Altitude is %s \n",t);
@@ -1492,6 +1443,21 @@ parse_alarm(shifted4);
 
 }
 
+void send_alarm(int alarm, int value)
+{
+
+    int alm= alarm;
+    int val = value;
+    update_info();
+    // prepare the format of the periodic CAN message
+    snprintf(datatosend, sizeof(datatosend), "$ALM 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%s,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,logger_id,alm,val);
+
+    //calling send tcp to send the data
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+
+}
+
 
 void poll_alarms(void)
 {
@@ -1501,8 +1467,10 @@ int ret;
 
 
 printf("entered section to read alarms\n");
-double ALM0=-1,ALM1=-1,ALM2=-1,ALM3=-1,ALM4=-1,ALM5=-1,ALM6=-1,ALM7=-1,ALM8=-1,ALM9=-1,ALM10=-1,ALM11=-1,ALM12=-1,ALM13=-1,ALM14=-1,ALM15=-1;
-double ALM16=-1,ALM17=-1,ALM18=-1,ALM19=-1,ALM20=-1,ALM21=-1,ALM22=-1,ALM23=-1,ALM24=-1,ALM25=-1,ALM26=-1,ALM27=-1,ALM28=-1,ALM29=-1,ALM30=-1;
+double ALM0=-1,ALM1=-1,ALM2=-1,ALM3=-1,ALM4=-1,ALM5=-1,ALM6=-1,ALM7=-1,ALM8=-1,ALM9=-1,ALM10=-1,ALM11=-1,ALM12=-1,ALM13=-1,ALM14=-1,ALM15=-1, ALM16=-1,ALM17=-1;
+int a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40;
+int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65;
+int recievedint;
 
     double value;
     char timestamp[26];
@@ -1515,262 +1483,674 @@ double ALM16=-1,ALM17=-1,ALM18=-1,ALM19=-1,ALM20=-1,ALM21=-1,ALM22=-1,ALM23=-1,A
 
 
     ret = read_tag_latest_data_from_db("Alm0","DSEPANEL",5,1,&ALM0,timestamp); 
-    printf("CoolantTemp value : %lf\n",ALM0);  
-    if (ret!=0)
+    printf("Alarm Value 1: %lf\n",ALM0);  
+    recievedint= (int)ALM0;
+    if (ret==0)
     {
-        ALM0=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a0 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(1,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a1 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(2,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a2 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(3,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a3 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(4,shifted4);
+        }
     } 
 
     ret = read_tag_latest_data_from_db("Alm1","DSEPANEL",5,1,&ALM1,timestamp); 
-    printf("Engine RPM :%lf\n",ALM1); 
-    if (ret!=0)
+    printf("Alarm Value 2: %lf\n",ALM1);  
+    recievedint= (int)ALM1;
+    if (ret==0)
     {
-        ALM1=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a5 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(5,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a6 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(6,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a7 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(7,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a8 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(8,shifted4);
+        }
     } 
+
     ret = read_tag_latest_data_from_db("Alm2","DSEPANEL",5,1,&ALM2,timestamp); 
-    printf("Generator Frequency :%lf\n",ALM2); 
-    if (ret!=0)
+        printf("Alarm Value 3: %lf\n",ALM2);  
+    recievedint= (int)ALM2;
+    if (ret==0)
     {
-        ALM2=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a9 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(9,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a10 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(10,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a11 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(11,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a12 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(12,shifted4);
+        }
     } 
 
     ret = read_tag_latest_data_from_db("Alm3","DSEPANEL",5,1,&ALM3,timestamp); 
-    printf("Engine % Torque value :%lf\n",ALM3); 
-
-    if (ret!=0)
+       printf("Alarm Value 4: %lf\n",ALM3);  
+    recievedint= (int)ALM3;
+    if (ret==0)
     {
-        ALM3=-1;
-    }
+        int shifted1 = (recievedint >> 12);
+        printf("a13 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(13,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a14 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(14,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a15 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(15,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a16 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(16,shifted4);
+        }
+    } 
 
     ret = read_tag_latest_data_from_db("Alm4","DSEPANEL",5,1,&ALM4,timestamp); 
-    printf("GeneratorTotalPower Watts :%lf\n",ALM4); 
-
-    if (ret!=0)
+        printf("Alarm Value 5: %lf\n",ALM4);  
+    recievedint= (int)ALM4;
+    if (ret==0)
     {
-        ALM4=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a17 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(17,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a18 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(18,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a19 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(19,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a20 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(20,shifted4);
+        }
+    }  
+    
+    ret = read_tag_latest_data_from_db("Alm5","DSEPANEL",5,1,&ALM5,timestamp); 
+       printf("Alarm Value 6: %lf\n",ALM5);  
+    recievedint= (int)ALM5;
+    if (ret==0)
+    {
+        int shifted1 = (recievedint >> 12);
+        printf("a21 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(21,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a22 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(22,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a23 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(23,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a24 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(24,shifted4);
+        }
     } 
-       ret = read_tag_latest_data_from_db("Alm5","DSEPANEL",5,1,&ALM5,timestamp); 
-    printf("GenPhaseApower :%lf\n",ALM5); 
 
-    if (ret!=0)
-    {
-        ALM5=-1;
-    }
     ret = read_tag_latest_data_from_db("Alm6","DSEPANEL",5,1,&ALM6,timestamp); 
-    printf("GenPhaseBPower :%lf\n",ALM6); 
-    if (ret!=0)
+        printf("Alarm Value 7: %lf\n",ALM6);  
+    recievedint= (int)ALM6;
+    if (ret==0)
     {
-        ALM6=-1;
-    }
+        int shifted1 = (recievedint >> 12);
+        printf("a25 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(25,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a26 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(26,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a27 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(27,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a28 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(28,shifted4);
+        }
+    } 
 
 
     ret = read_tag_latest_data_from_db("Alm7","DSEPANEL",5,1,&ALM7,timestamp); 
-    printf("Phase AB line to line V value :%lf\n",ALM7); 
-
-    if (ret!=0)
+        printf("Alarm Value 8: %lf\n",ALM7);  
+    recievedint= (int)ALM7;
+    if (ret==0)
     {
-        ALM7=-1;
-    }     
+        int shifted1 = (recievedint >> 12);
+        printf("a29 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(29,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a30 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(30,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a31 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(31,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a32 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(32,shifted4);
+        }
+    }      
 
     ret = read_tag_latest_data_from_db("Alm8","DSEPANEL",5,1,&ALM8,timestamp); 
-    printf("Phase A line to Neutral V value :%lf\n",ALM8); 
-
-    if (ret!=0)
+       printf("Alarm Value 9: %lf\n",ALM8);  
+    recievedint= (int)ALM8;
+    if (ret==0)
     {
-        ALM8=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a33 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(33,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a34 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(34,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a35 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(35,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a36 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(36,shifted4);
+        }
     } 
 
     ret = read_tag_latest_data_from_db("Alm9","DSEPANEL",5,1,&ALM9,timestamp); 
-    printf("Phase A current value :%lf\n",ALM9); 
-
-    if (ret!=0)
+        printf("Alarm Value 10: %lf\n",ALM9);  
+    recievedint= (int)ALM9;
+    if (ret==0)
     {
-        ALM9=-1;
-    } 
+        int shifted1 = (recievedint >> 12);
+        printf("a37 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(37,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a38 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(38,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a39 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(39,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a40 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(40,shifted4);
+        }
+    }  
 
     ret = read_tag_latest_data_from_db("Alm10","DSEPANEL",5,1,&ALM10,timestamp); 
-    printf("GenPhaseCPower :%lf\n",ALM10); 
-    if (ret!=0)
+        printf("Alarm Value 11: %lf\n",ALM10);  
+    recievedint= (int)ALM10;
+    if (ret==0)
     {
-        ALM10=-1;
-    }
-    ret =
+        int shifted1 = (recievedint >> 12);
+        printf("a41 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(41,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a42 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(42,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a43 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(43,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a44 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(44,shifted4);
+        }
+    } 
 
     ret = read_tag_latest_data_from_db("Alm11","DSEPANEL",5,1,&ALM11,timestamp);  
-    printf("Phase BC line to line Vvalue :%lf\n",ALM11);   
-
-    if (ret!=0)
+        printf("Alarm Value 12: %lf\n",ALM11);  
+    recievedint= (int)ALM1;
+    if (ret==0)
     {
-        ALM11=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a45 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(45,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a46 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(46,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a47 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(47,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a48 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(48,shifted4);
+        }
     } 
 
     ret = read_tag_latest_data_from_db("Alm12","DSEPANEL",5,1,&ALM12,timestamp);  
-    printf("Phase B line to Neutral V value :%lf\n",ALM12); 
- 
-    if (ret!=0)
+        printf("Alarm Value : %lf\n",ALM12);  
+    recievedint= (int)ALM12;
+    if (ret==0)
     {
-        ALM12=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a49 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(49,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a50 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(51,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a51 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(51,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a52 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(52,shifted4);
+        }
     } 
 
     ret = read_tag_latest_data_from_db("Alm13","DSEPANEL",5,1,&ALM13,timestamp); 
-    printf("Phase B current value :%lf\n",ALM13); 
-
-    if (ret!=0)
+        printf("Alarm Value 13: %lf\n",ALM13);  
+    recievedint= (int)ALM13;
+    if (ret==0)
     {
-        ALM13=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a53 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(53,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a54 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(54,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a55 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(55,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a56 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(56,shifted4);
+        }
     } 
 
     read_tag_latest_data_from_db("Alm14","DSEPANEL",5,1,&ALM14,timestamp); 
-    printf("GeneratorTotalPower VA :%lf\n",ALM14); 
-
-    if (ret!=0)
+        printf("Alarm Value 14: %lf\n",ALM14);  
+    recievedint= (int)ALM14;
+    if (ret==0)
     {
-        ALM14=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a57 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(57,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a58 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(58,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a59 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(59,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a60 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(60,shifted4);
+        }
     } 
 
 
     ret = read_tag_latest_data_from_db("Alm15","DSEPANEL",5,1,&ALM15,timestamp); 
-    printf("Phase CA line to line V value :%lf\n",ALM15); 
-
-    if (ret<0)
+        printf("Alarm Value 15: %lf\n",ALM15);  
+    recievedint= (int)ALM15;
+    if (ret==0)
     {
-        ALM15=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a61 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(61,shifted1);
+        }
+
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a62 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(62,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a63 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(63,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a64 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(64,shifted4);
+        }
     } 
-
-   ret = read_tag_latest_data_from_db("Alm16","DSEPANEL",5,1,&ALM16,timestamp); 
-    printf("Phase C line to Neutral V value :%lf\n",ALM16); 
-
-    if (ret!=0)
+    
+    ret = read_tag_latest_data_from_db("Alm16","DSEPANEL",5,1,&ALM16,timestamp); 
+        printf("Alarm Value 16: %lf\n",ALM16);  
+    recievedint= (int)ALM16;
+    if (ret==0)
     {
-        ALM16=-1;
-    } 
+        int shifted1 = (recievedint >> 12);
+        printf("a65 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(65,shifted1);
+        }
 
+        int shifted2 = ((recievedint & 3840 )>> 8 );
+        printf("a66 is %d \n",shifted2);
+        //parse_alarm(shifted2);
+        if(shifted2 != 1)
+        {
+        send_alarm(66,shifted2);
+        }
+
+        int shifted3 = ((recievedint & 240) >> 4);
+        printf("a67 is %d \n",shifted3);       
+        //parse_alarm(shifted3);
+        if(shifted3 != 1)
+        {
+        send_alarm(67,shifted3);
+        }
+
+        int shifted4 = (recievedint & 15);
+        printf("a68 is %d \n",shifted4);
+        //parse_alarm(shifted4);
+        if(shifted1 != 1)
+        {
+        send_alarm(68,shifted4);
+        }
+    } 
 
 
     ret = read_tag_latest_data_from_db("Alm17","DSEPANEL",5,1,&ALM17,timestamp);  
-    printf("Phase C current value :%lf\n",ALM17);   
-
-    if (ret<0)
+       printf("Alarm Value 17: %lf\n",ALM17);  
+    recievedint= (int)ALM17;
+    if (ret==0)
     {
-        ALM17=-1;
+        int shifted1 = (recievedint >> 12);
+        printf("a69 is %d \n",shifted1);
+        //parse_alarm(shifted1);
+        if(shifted1 != 1)
+        {
+        send_alarm(69,shifted1);
+        }
+
     } 
 
-
-    ret = read_tag_latest_data_from_db("Alm18","DSEPANEL",5,1,&ALM18,timestamp);  
-    printf("Phase C current value :%lf\n",ALM18);   
-
-    if (ret<0)
-    {
-        ALM17=-1;
-    } 
-
-
-    ret = read_tag_latest_data_from_db("Alm19","DSEPANEL",5,1,&ALM19,timestamp);  
-    printf("Phase C current value :%lf\n",ALM19);   
-
-    if (ret<0)
-    {
-        ALM17=-1;
-    } 
-
-    
-        ret = read_tag_latest_data_from_db("Alm20","DSEPANEL",5,1,&ALM20,timestamp);  
-    printf("OilPressure : %lf\n",ALM20);  
-    if (ret!=0)
-    {
-        ALM20=-1;
-    } 
-
-
-    ret = read_tag_latest_data_from_db("Alm21","DSEPANEL",5,1,&ALM21,timestamp); 
-    printf("Engine Hour Meter value :%lf\n",ALM21); 
-
-    if (ret!=0)
-    {
-        ALM21=-1;
-    } 
-
-    
-    ret = read_tag_latest_data_from_db("Alm22","DSEPANEL",5,1,&ALM22,timestamp); 
-    printf("Fuel Consumption Rate value :%lf\n",ALM22); 
-
-    if (ret!=0)
-    {
-        ALM22=-1;
-    }     
-
-    ret = read_tag_latest_data_from_db("Alm23","DSEPANEL",5,1,&ALM23,timestamp); 
-    printf("Total Fuel used value :%lf\n",ALM23); 
-
-    if (ret!=0)
-    {
-        ALM23=-1;
-    } 
-
-
-    ret = read_tag_latest_data_from_db("Alm24","DSEPANEL",5,1,&ALM24,timestamp); 
-    printf("Current Fuel level Percent value :%lf\n",ALM24); 
-
-    if (ret<0)
-    {
-        ALM24=-1;
-    } 
-
-
-    ret = read_tag_latest_data_from_db("Alm25","DSEPANEL",5,1,&ALM25,timestamp); 
-    printf("DTC1extra value :%lf\n",ALM25);    
-
-    if (ret!=0)
-    {
-        ALM25=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Alm26","DSEPANEL",5,1,&ALM26,timestamp); 
-    printf("Rsvd value :%lf\n",ALM26); 
-
-    if (ret!=0)
-    {
-        ALM26=-1;
-    } 
-        ret = read_tag_latest_data_from_db("Alm27","DSEPANEL",5,1,&ALM27,timestamp); 
-    printf("Rsvd value :%lf\n",ALM27);    
-
-    if (ret!=0)
-    {
-        ALM27=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Alm28","DSEPANEL",5,1,&ALM28,timestamp); 
-    printf("Rsvd :%lf\n",ALM28); 
-
-    if (ret!=0)
-    {
-        ALM28=-1;
-    } 
-       ret = read_tag_latest_data_from_db("Alm29","DSEPANEL",5,1,&ALM29,timestamp); 
-    printf("Rsvd :%lf\n",ALM29); 
-
-    if (ret!=0)
-    {
-        ALM29=-1;
-    }
-    ret = read_tag_latest_data_from_db("Alm30","DSEPANEL",5,1,&ALM30,timestamp); 
-    printf("Rsvd :%lf\n",ALM30); 
-    if (ret!=0)
-    {
-        ALM30=-1;
-    }
-
-
-
-
-    update_info();
-    // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "$ALM 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,ALM0,ALM1,ALM2,ALM3,ALM4,ALM5,ALM6,ALM7,ALM8,ALM9,ALM10,ALM11,ALM12,ALM13,ALM14,ALM15,ALM16,ALM17,ALM18,ALM19,ALM20,ALM21,ALM22,ALM23,ALM24);
-
-    //calling send tcp to send the data
-    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
-    pthread_join(thread_id,NULL);
+   
 
 }
+
+
 
 
 
@@ -1787,7 +2167,7 @@ additional_gps_data();
 }
 else if( (argc>1) && atoi(argv[1]) == 1)
 {
-get_cellular_data();
+poll_alarms();
 }
 else 
 {
