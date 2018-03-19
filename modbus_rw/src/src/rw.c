@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.0.0_1         //
+//  application version: 1.0.0_2         //
 //  updated last 28/02/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -13,8 +13,9 @@
 //1.0.0_1
 //add last known gps info if new not avaialable (avoid 0,0)
 //include num of sat and hdop information
-//some prep work for 1.1.0 ( Alarm ) 
-
+//some prep work for 1.1.0 (Alarm) 
+//1.0.0_2
+//added the dtc for 1.1.0 (Fault)
 
 
 
@@ -43,7 +44,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "v1.0.0"
+#define script_ver "1.0.0_2"
 
 
 // below int set to 1 will exit out the application
@@ -73,6 +74,7 @@ double REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG9=-1,REG10=-1,
 double REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1;
 double REG8=-1,REG12=-1,REG16=-1,REG7=-1,REG17=-1,REG13=-1;
 double REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
+double REG31=-1,REG32=-1,REG33=-1,REG34=-1,REG35=-1,REG36=-1;
 double dop=-1,satsused=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
@@ -1443,7 +1445,139 @@ parse_alarm(shifted4);
 
 }
 
-void send_alarm(int alarm, int value)
+
+void send_fault(int dtc1, int dtc2)
+{
+
+    int dtc= dtc1;
+    int dtcext = dtc2;
+    update_info();
+    // prepare the format of the periodic CAN message
+    snprintf(datatosend, sizeof(datatosend), "$FLT 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%s,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,logger_id,dtc,dtcext);
+
+    //calling send tcp to send the data
+    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_join(thread_id,NULL);
+
+}
+
+
+void poll_faults(void)
+{
+
+int ret;
+
+
+
+
+printf("entered polling section for faults\n");
+
+REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1,REG31=-1,REG32=-1,REG33=-1,REG34=-1;
+
+  ret = read_tag_latest_data_from_db("Tag25","DSEPANEL",4,1,&REG25,timestamp);  
+    printf("DTC 1 : %lf\n",REG25);  
+    if (ret!=0)
+    {
+        REG25=-1;
+    } 
+
+  ret = read_tag_latest_data_from_db("Tag26","DSEPANEL",4,1,&REG26,timestamp);  
+    printf("DTC 1 extended : %lf\n",REG26);  
+    if (ret!=0)
+    {
+        REG26=-1;
+    } 
+
+    if ((REG25>0)&&(REG26>0))
+{
+send_fault(REG25,REG26);
+}
+
+  ret = read_tag_latest_data_from_db("Tag27","DSEPANEL",4,1,&REG27,timestamp);  
+    printf("DTC 2 : %lf\n",REG27);  
+    if (ret!=0)
+    {
+        REG27=-1;
+    } 
+
+  ret = read_tag_latest_data_from_db("Tag28","DSEPANEL",4,1,&REG28,timestamp);  
+    printf("DTC 2 extended : %lf\n",REG28);  
+    if (ret!=0)
+    {
+        REG28=-1;
+    } 
+
+    if ((REG27>0)&&(REG28>0))
+{
+send_fault(REG27,REG28);
+}
+
+  ret = read_tag_latest_data_from_db("Tag29","DSEPANEL",4,1,&REG29,timestamp);  
+    printf("DTC 3 : %lf\n",REG29);  
+    if (ret!=0)
+    {
+        REG29=-1;
+    } 
+
+  ret = read_tag_latest_data_from_db("Tag30","DSEPANEL",4,1,&REG30,timestamp);  
+    printf("DTC 3 extended : %lf\n",REG30);  
+    if (ret!=0)
+    {
+        REG30=-1;
+    } 
+
+    if ((REG29>0)&&(REG30>0))
+{
+send_fault(REG29,REG30);
+}
+
+
+  ret = read_tag_latest_data_from_db("Tag31","DSEPANEL",4,1,&REG31,timestamp);  
+    printf("DTC 4 : %lf\n",REG31);  
+    if (ret!=0)
+    {
+        REG31=-1;
+    } 
+
+  ret = read_tag_latest_data_from_db("Tag32","DSEPANEL",4,1,&REG32,timestamp);  
+    printf("DTC 4 extended : %lf\n",REG32);  
+    if (ret!=0)
+    {
+        REG32=-1;
+    } 
+
+
+    if ((REG31>0)&&(REG32>0))
+{
+send_fault(REG31,REG32);
+}
+
+  ret = read_tag_latest_data_from_db("Tag33","DSEPANEL",4,1,&REG33,timestamp);  
+    printf("DTC 5 : %lf\n",REG33);  
+    if (ret!=0)
+    {
+        REG33=-1;
+    } 
+
+  ret = read_tag_latest_data_from_db("Tag34","DSEPANEL",4,1,&REG34,timestamp);  
+    printf("DTC 5 extended : %lf\n",REG34);  
+    if (ret!=0)
+    {
+        REG34=-1;
+    } 
+
+
+
+    if ((REG33>0)&&(REG34>0))
+{
+send_fault(REG33,REG34);
+}
+
+
+}
+
+
+void send_alarm(int alm, int val)
 {
 
     int alm= alarm;
@@ -2163,7 +2297,7 @@ printf(" argc is %d \n",argc);
 
 if((argc>1) && atoi(argv[1]) == 0)
 {
-additional_gps_data();
+poll_faults();
 }
 else if( (argc>1) && atoi(argv[1]) == 1)
 {
