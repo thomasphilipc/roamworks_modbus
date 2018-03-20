@@ -1,6 +1,6 @@
 # Maestro Modbus
 Current Stable Version: 
-Current Build Version:1.0.0
+Current Build Version:1.0.0_3
 
 Modbus_rw is an application that runs on the Maestro RTU. The application gathers modbus data and ignition, power information and packages this data which is then send to the ROAM application
 
@@ -45,8 +45,21 @@ Renamed function names and some cleaning of unused lines
 Added keep alive for preventing tcp disconnect
 corrected fix logic always being false even with valid fix
 
-1.0.0
+1.0.0_3
 Release Candidate 
+//1.0.0_1
+//add last known gps info if new not avaialable (avoid 0,0)
+//include num of sat and hdop information
+//some prep work for 1.1.0 (Alarm) 
+//1.0.0_2
+//added the dtc for 1.1.0 (Fault)
+//1.0.0_3
+//correct the issues with code calling wrong polling group for Registers
+//modify alarm function diag to show only required data
+//changed control flag to 36
+// hardcoded power and ignition values
+// included new timer to force gps update on devices
+
 
 Task to do
 Delete database periodically to control usage 

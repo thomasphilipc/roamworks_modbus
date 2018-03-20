@@ -3,8 +3,8 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.0.0_2         //
-//  updated last 28/02/18 : 16:10 PM   //
+//  application version: 1.0.0_3         //
+//  updated last 20/03/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
 /////////////////////////////////////////
@@ -16,6 +16,12 @@
 //some prep work for 1.1.0 (Alarm) 
 //1.0.0_2
 //added the dtc for 1.1.0 (Fault)
+//1.0.0_3
+//correct the issues with code calling wrong polling group for Registers
+//modify alarm function diag to show only required data
+//changed control flag to 36
+// hardcoded power and ignition values
+// included new timer to force gps update on devices
 
 
 
@@ -44,7 +50,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.0_2"
+#define script_ver "1.0.0_3"
 
 
 // below int set to 1 will exit out the application
@@ -64,6 +70,7 @@ int failed_msgs=1;
 // the reporting rate and heartbeat rate is set as a variable to allow future usage in changing them OTA
 int reporting_rate =2;
 int heartbeat_rate=720;
+int force_update_gps_rate=5;
 // the below parameters are expected to be static and wouf not change after configuration
 char imei[15];
 char logger_id[20];
@@ -124,12 +131,15 @@ int keep_alive=3;
 timer_t firstTimerID;
 timer_t secondTimerID;
 timer_t thirdTimerID;
+timer_t fourthTimerID;
 
 // declaration of function and variable necessary for ioline checks
 int poll_ioline_state(int);
 int prev_io_state=-1;
 
-
+// faults
+int a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40;
+int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65,a66,a67,a68;
 
 // declaration of functions
 void update_info();
@@ -138,6 +148,7 @@ void send_poll_response();
 void send_heartbeat();
 void filterString(char *s,const char *toremove);
 void ready_device();
+void force_gps_update(void);
 
 // timer functions that will called when a signal is fired based on the respective timer
 void MonitorIOLines()
@@ -274,6 +285,11 @@ static void timerHandler( int sig, siginfo_t *si, void *uc )
     else if ( *tidp == thirdTimerID )
     // if signal originated by third timer then call function RestartApplication()
       RestartApplication();
+    else if ( *tidp == fourthTimerID )
+    // if signal originated by third timer then call function RestartApplication()
+      force_gps_update();
+
+
 }
 
 // function to make timers and assign the signals with the timer expires ; returns 0 on success and -1 on failure
@@ -319,14 +335,18 @@ static int makeTimer( char *name, timer_t *timerID, int expireS, int intervalS )
 // function to fire all the timers ; returns 0 on succes and <0 on failure
 static int srtSchedule( void )
 {
-    int rc1,rc2,rc3;
+    int rc1,rc2,rc3,rc4;
     rc1 = makeTimer("First Timer", &firstTimerID, 1, 1);       // checks io line state every second for changes
 
     rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);   // defined to read tcp for new data every 30 seconds
 
     rc3 = makeTimer("Third Timer", &thirdTimerID, 1800, 0);
 
-    return (rc1+rc2+rc3);
+    rc4 = makeTimer("Fourth Timer", &fourthTimerID, 55, 55);
+
+
+
+    return (rc1+rc2+rc3+rc4);
     //return (rc1+rc2);
 }
 
@@ -374,8 +394,11 @@ void tick_handler( int sig )
         }
     }
 
+
+
+
     //below functions shouf be fired right away when a change in state occurs
-    if ((ign_state==0)&&(hodor==1))
+    if ((ign_state==0)&&(hodor==1)&&(pwr_state!=0))
     { 
         do_function=4; 
         //ignition off
@@ -390,7 +413,7 @@ void tick_handler( int sig )
     }
 
 
-    if ((ign_state==1)&&(hodor==1))
+    if ((ign_state==1)&&(hodor==1)&&(pwr_state!=0))
     { 
         do_function=5;
         // ignition on
@@ -516,12 +539,6 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
     //get the modbus data values and set to -1 if not available
 
 
-    ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&REG20,timestamp);  
-    printf("OilPressure : %lf\n",REG20);  
-    if (ret!=0)
-    {
-        REG20=-1;
-    } 
 
     ret = read_tag_latest_data_from_db("Tag0","DSEPANEL",1,1,&REG0,timestamp); 
     printf("CoolantTemp value : %lf\n",REG0);  
@@ -541,85 +558,7 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
     {
         REG2=-1;
     } 
-    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&REG8,timestamp); 
-    printf("Phase A line to Neutral V value :%lf\n",REG8); 
 
-    if (ret!=0)
-    {
-        REG8=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&REG12,timestamp);  
-    printf("Phase B line to Neutral V value :%lf\n",REG12); 
- 
-    if (ret!=0)
-    {
-        REG12=-1;
-    } 
-   ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&REG16,timestamp); 
-    printf("Phase C line to Neutral V value :%lf\n",REG16); 
-
-    if (ret!=0)
-    {
-        REG16=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&REG7,timestamp); 
-    printf("Phase AB line to line V value :%lf\n",REG7); 
-
-    if (ret!=0)
-    {
-        REG7=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&REG11,timestamp);  
-    printf("Phase BC line to line Vvalue :%lf\n",REG11);   
-
-    if (ret!=0)
-    {
-        REG11=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&REG15,timestamp); 
-    printf("Phase CA line to line V value :%lf\n",REG15); 
-
-    if (ret<0)
-    {
-        REG15=-1;
-    } 
-
-    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&REG9,timestamp); 
-    printf("Phase A current value :%lf\n",REG9); 
-
-    if (ret!=0)
-    {
-        REG9=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&REG13,timestamp); 
-    printf("Phase B current value :%lf\n",REG13); 
-
-    if (ret!=0)
-    {
-        REG13=-1;
-    } 
-        ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&REG17,timestamp);  
-    printf("Phase C current value :%lf\n",REG17);   
-
-    if (ret<0)
-    {
-        REG17=-1;
-    } 
-
-    ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&REG22,timestamp); 
-    printf("Fuel Consumption Rate value :%lf\n",REG22); 
-
-    if (ret!=0)
-    {
-        REG22=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",1,1,&REG24,timestamp); 
-    printf("Current Fuel level Percent value :%lf\n",REG24); 
-
-    if (ret<0)
-    {
-        REG24=-1;
-    } 
     ret = read_tag_latest_data_from_db("Tag3","DSEPANEL",2,1,&REG3,timestamp); 
     printf("Engine Torque value :%lf\n",REG3); 
 
@@ -628,28 +567,7 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
         REG3=-1;
     } 
 
-    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",4,1,&REG21,timestamp); 
-    printf("Engine Hour Meter value :%lf\n",REG21); 
 
-    if (ret!=0)
-    {
-        REG21=-1;
-    } 
-    ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",4,1,&REG23,timestamp); 
-    printf("Total Fuel used value :%lf\n",REG23); 
-
-    if (ret!=0)
-    {
-        REG23=-1;
-    } 
-    //ret = read_tag_latest_data_from_db("Tag19","DSEPANEL",5,1,&REG19,timestamp); 
-    //printf("DTC value :%lf\n",REG19); 
-
-    //if (ret!=0)
-    //{
-    //    REG19=-1;
-    //} 
-  
     ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",3,1,&REG4,timestamp); 
     printf("Average L to L Voltage :%lf\n",REG4); 
 
@@ -671,7 +589,134 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
         REG6=-1;
     }
 
-    
+    ret = read_tag_latest_data_from_db("Tag7","DSEPANEL",1,1,&REG7,timestamp); 
+    printf("Phase AB line to line V value :%lf\n",REG7); 
+
+    if (ret!=0)
+    {
+        REG7=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag8","DSEPANEL",1,1,&REG8,timestamp); 
+    printf("Phase A line to Neutral V value :%lf\n",REG8); 
+
+    if (ret!=0)
+    {
+        REG8=-1;
+    } 
+
+
+    ret = read_tag_latest_data_from_db("Tag9","DSEPANEL",1,1,&REG9,timestamp); 
+    printf("Phase A current value :%lf\n",REG9); 
+
+    if (ret!=0)
+    {
+        REG9=-1;
+    } 
+
+    // tag 10 not used
+    printf("Tag10 not used\n");
+
+    ret = read_tag_latest_data_from_db("Tag11","DSEPANEL",1,1,&REG11,timestamp);  
+    printf("Phase BC line to line Vvalue :%lf\n",REG11);   
+
+    if (ret!=0)
+    {
+        REG11=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag12","DSEPANEL",1,1,&REG12,timestamp);  
+    printf("Phase B line to Neutral V value :%lf\n",REG12); 
+ 
+    if (ret!=0)
+    {
+        REG12=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag13","DSEPANEL",1,1,&REG13,timestamp); 
+    printf("Phase B current value :%lf\n",REG13); 
+
+    if (ret!=0)
+    {
+        REG13=-1;
+    } 
+
+    // tag 14 not used
+    printf("Tag14 not used\n");
+
+    ret = read_tag_latest_data_from_db("Tag15","DSEPANEL",1,1,&REG15,timestamp); 
+    printf("Phase CA line to line V value :%lf\n",REG15); 
+
+    if (ret<0)
+    {
+        REG15=-1;
+    } 
+
+
+   ret = read_tag_latest_data_from_db("Tag16","DSEPANEL",1,1,&REG16,timestamp); 
+    printf("Phase C line to Neutral V value :%lf\n",REG16); 
+
+    if (ret!=0)
+    {
+        REG16=-1;
+    } 
+   
+    ret = read_tag_latest_data_from_db("Tag17","DSEPANEL",1,1,&REG17,timestamp);  
+    printf("Phase C current value :%lf\n",REG17);   
+
+    if (ret<0)
+    {
+        REG17=-1;
+    } 
+
+    // tag 18 not used
+    printf("Tag18 not used\n");
+    // tag 19 not used
+    printf("Tag19 not used\n");
+
+    ret = read_tag_latest_data_from_db("Tag20","DSEPANEL",1,1,&REG20,timestamp);  
+    printf("OilPressure : %lf\n",REG20);  
+    if (ret!=0)
+    {
+        REG20=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",6,1,&REG21,timestamp); 
+    printf("Engine Hour Meter value :%lf\n",REG21); 
+
+    if (ret!=0)
+    {
+        REG21=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&REG22,timestamp); 
+    printf("Fuel Consumption Rate value :%lf\n",REG22); 
+
+    if (ret!=0)
+    {
+        REG22=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag23","DSEPANEL",6,1,&REG23,timestamp); 
+    printf("Total Fuel used value :%lf\n",REG23); 
+
+    if (ret!=0)
+    {
+        REG23=-1;
+    } 
+
+    ret = read_tag_latest_data_from_db("Tag24","DSEPANEL",1,1,&REG24,timestamp); 
+    printf("Current Fuel level Percent value :%lf\n",REG24); 
+
+    if (ret<0)
+    {
+        REG24=-1;
+    } 
+   
+   
+
+  
+
 
     
     //CANP 36 &(IMEI),&(Time),&(Date),&(Lat),&(Lon),&(Fix),&(Course),&(Speed),&(NavDist),&(Alt),&(Power),&(Bat),&(IN7),&(Out0),&(DOP),&(SatsUsed), &(REG0),&(REG1),&(REG2),&(REG3),&(REG4),&(REG5),&(REG6),&(REG7),&(REG8),&(REG9),&(REG10),&(REG11),&(REG12),&(REG13),&(REG14),&(REG15),& (REG16),&(REG17),&(REG18),&(REG19),&(REG20),&(REG21),&(REG22),&(REG23),&(REG24)
@@ -825,7 +870,8 @@ void send_power_up(void)
     printf("sending power up\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,-1,-1,-1,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,1,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+
     
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -840,7 +886,8 @@ void send_power_loss(void)
     printf("sending power loss\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,0,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -854,7 +901,7 @@ void send_power_restore(void)
 
     char pwr_command[1024];
     // prepare the format of the power restore message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,1,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -870,7 +917,7 @@ void send_ignition_off(void)
     printf("sending ignition off\n");
 
             // prepare the format of the ignition OFF message
-    snprintf(ign_command, sizeof(ign_command), "$IN8L 21 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,%d,%lf,%lf,,,,,,,,,,,,,,,,,,,,\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused);
+    snprintf(ign_command, sizeof(ign_command), "$IN8L 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -890,7 +937,8 @@ void send_ignition_on(void)
     // prepare the format of the Ignition ON message
 
 
-    snprintf(ign_command, sizeof(ign_command), "$IN8H 21 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,%d,%lf,%lf,,,,,,,,,,,,,,,,,,,,\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused);
+    snprintf(ign_command, sizeof(ign_command), "$IN8H 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,1,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -1258,19 +1306,18 @@ printf(" Reading additional GPS data \n");
                     case 2:
                     printf("Latitude is %s \n",t);
                             break;
-                    case 3:
-                    printf("N/S is %s \n",t);
-                            break;
+                    //case 3:
+                    //printf("N/S is %s \n",t);
+                    //        break;
                     case 4:
                     printf("Longitude is %s \n",t);
                             break;
-                    case 5:
-                    printf("E/W is %s \n",t);
-
-                            break;
-                    case 6:
-                    printf("PositionFix is %s \n",t);
-                            break;
+                    //case 5:
+                    //printf("E/W is %s \n",t);
+                    //        break;
+                    //case 6:
+                    //printf("PositionFix is %s \n",t);
+                    //        break;
                     case 7:
                     printf("Number of Satellites is %s \n",t);
                             satsused=atoi(t);
@@ -1279,12 +1326,12 @@ printf(" Reading additional GPS data \n");
                     printf("Hdop is %s \n",t);
                             dop=atof(t);
                             break;
-                    case 9:
-                    printf("Altitude is %s \n",t);
-                            break;
-                    case 10:
-                    printf("Status is %s \n",t);
-                            break;
+                    //case 9:
+                    //printf("Altitude is %s \n",t);
+                    //        break;
+                    //case 10:
+                    //printf("Status is %s \n",t);
+                    //        break;
 }
                    break;
 
@@ -1577,19 +1624,22 @@ send_fault(REG33,REG34);
 }
 
 
-void send_alarm(int alm, int val)
+void send_alarm(int alarm, int value)
 {
-
     int alm= alarm;
     int val = value;
+
+printf(" Alarm will be send for alarm %d with value %d \n",alm,val);
+/*
+
     update_info();
-    // prepare the format of the periodic CAN message
+
     snprintf(datatosend, sizeof(datatosend), "$ALM 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%s,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,logger_id,alm,val);
 
-    //calling send tcp to send the data
+
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
     pthread_join(thread_id,NULL);
-
+*/
 }
 
 
@@ -1602,8 +1652,6 @@ int ret;
 
 printf("entered section to read alarms\n");
 double ALM0=-1,ALM1=-1,ALM2=-1,ALM3=-1,ALM4=-1,ALM5=-1,ALM6=-1,ALM7=-1,ALM8=-1,ALM9=-1,ALM10=-1,ALM11=-1,ALM12=-1,ALM13=-1,ALM14=-1,ALM15=-1, ALM16=-1,ALM17=-1;
-int a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40;
-int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65;
 int recievedint;
 
     double value;
@@ -1624,33 +1672,37 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a0 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a0!=shifted1))
         {
         send_alarm(1,shifted1);
+        a0=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a1 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a1!=shifted2))
         {
         send_alarm(2,shifted2);
+        a1=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a2 is %d \n",shifted3);       
-        //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        //parse_alarm(shifted3);ma
+        if((shifted3 != 1) && (a2!=shifted3))
         {
         send_alarm(3,shifted3);
+        a2=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
         printf("a3 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a2!=shifted4))
         {
         send_alarm(4,shifted4);
+        a3=shifted4;
         }
     } 
 
@@ -1660,35 +1712,39 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a5 is %d \n",shifted1);
+        printf("a4 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a4!=shifted1))
         {
         send_alarm(5,shifted1);
+        a4=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a6 is %d \n",shifted2);
+        printf("a5 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a5!=shifted2))
         {
         send_alarm(6,shifted2);
+        a5=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a7 is %d \n",shifted3);       
+        printf("a6 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a6!=shifted3))
         {
         send_alarm(7,shifted3);
+        a6=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a8 is %d \n",shifted4);
+        printf("a7 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a7!=shifted4))
         {
         send_alarm(8,shifted4);
+        a7=shifted4;
         }
     } 
 
@@ -1698,35 +1754,39 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a9 is %d \n",shifted1);
+        printf("a8 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a8!=shifted1))
         {
         send_alarm(9,shifted1);
+        a8=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a10 is %d \n",shifted2);
+        printf("a9 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a9 !=shifted2))
         {
         send_alarm(10,shifted2);
+        a9=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a11 is %d \n",shifted3);       
+        printf("a10 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a10!=shifted3))
         {
         send_alarm(11,shifted3);
+        a10=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a12 is %d \n",shifted4);
+        printf("a11 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a11!=shifted4))
         {
         send_alarm(12,shifted4);
+        a11=shifted4;
         }
     } 
 
@@ -1736,35 +1796,39 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a13 is %d \n",shifted1);
+        printf("a12 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a12!=shifted1))
         {
         send_alarm(13,shifted1);
+        a12=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a14 is %d \n",shifted2);
+        printf("a13 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a13 !=shifted2))
         {
         send_alarm(14,shifted2);
+        a13=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a15 is %d \n",shifted3);       
+        printf("a14 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a14!=shifted3))
         {
         send_alarm(15,shifted3);
+        a14=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a16 is %d \n",shifted4);
+        printf("a15 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a15!=shifted4))
         {
         send_alarm(16,shifted4);
+        a15=shifted4;
         }
     } 
 
@@ -1774,37 +1838,41 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a17 is %d \n",shifted1);
+        printf("a16 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a16!=shifted1))
         {
         send_alarm(17,shifted1);
+        a16=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a18 is %d \n",shifted2);
+        printf("a17 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a17 !=shifted2))
         {
         send_alarm(18,shifted2);
+        a17=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a19 is %d \n",shifted3);       
+        printf("a18 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a18!=shifted3))
         {
         send_alarm(19,shifted3);
+        a18=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a20 is %d \n",shifted4);
+        printf("a19 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a19!=shifted4))
         {
         send_alarm(20,shifted4);
+        a19=shifted4;
         }
-    }  
+    } 
     
     ret = read_tag_latest_data_from_db("Alm5","DSEPANEL",5,1,&ALM5,timestamp); 
        printf("Alarm Value 6: %lf\n",ALM5);  
@@ -1812,37 +1880,42 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a21 is %d \n",shifted1);
+        printf("a20 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a20!=shifted1))
         {
         send_alarm(21,shifted1);
+        a20=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a22 is %d \n",shifted2);
+        printf("a21 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a21 !=shifted2))
         {
         send_alarm(22,shifted2);
+        a21=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a23 is %d \n",shifted3);       
+        printf("a22 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a22!=shifted3))
         {
         send_alarm(23,shifted3);
+        a22=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a24 is %d \n",shifted4);
+        printf("a23 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a23!=shifted4))
         {
         send_alarm(24,shifted4);
+        a23=shifted4;
         }
     } 
+    
 
     ret = read_tag_latest_data_from_db("Alm6","DSEPANEL",5,1,&ALM6,timestamp); 
         printf("Alarm Value 7: %lf\n",ALM6);  
@@ -1850,38 +1923,42 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a25 is %d \n",shifted1);
+        printf("a24 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a24!=shifted1))
         {
         send_alarm(25,shifted1);
+        a24=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a26 is %d \n",shifted2);
+        printf("a25 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a25 !=shifted2))
         {
         send_alarm(26,shifted2);
+        a25=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a27 is %d \n",shifted3);       
+        printf("a26 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a26!=shifted3))
         {
         send_alarm(27,shifted3);
+        a26=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a28 is %d \n",shifted4);
+        printf("a27 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a27!=shifted4))
         {
         send_alarm(28,shifted4);
+        a27=shifted4;
         }
     } 
-
+    
 
     ret = read_tag_latest_data_from_db("Alm7","DSEPANEL",5,1,&ALM7,timestamp); 
         printf("Alarm Value 8: %lf\n",ALM7);  
@@ -1889,37 +1966,42 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a29 is %d \n",shifted1);
+        printf("a28 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a28!=shifted1))
         {
         send_alarm(29,shifted1);
+        a28=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a30 is %d \n",shifted2);
+        printf("a29 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a29 !=shifted2))
         {
         send_alarm(30,shifted2);
+        a29=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a31 is %d \n",shifted3);       
+        printf("a30 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a30!=shifted3))
         {
         send_alarm(31,shifted3);
+        a30=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a32 is %d \n",shifted4);
+        printf("a31 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a31!=shifted4))
         {
         send_alarm(32,shifted4);
+        a31=shifted4;
         }
-    }      
+    } 
+    
 
     ret = read_tag_latest_data_from_db("Alm8","DSEPANEL",5,1,&ALM8,timestamp); 
        printf("Alarm Value 9: %lf\n",ALM8);  
@@ -1927,35 +2009,39 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a33 is %d \n",shifted1);
+        printf("a32 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a32!=shifted1))
         {
         send_alarm(33,shifted1);
+        a32=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a34 is %d \n",shifted2);
+        printf("a33 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a33 !=shifted2))
         {
         send_alarm(34,shifted2);
+        a33=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a35 is %d \n",shifted3);       
+        printf("a34 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a34!=shifted3))
         {
         send_alarm(35,shifted3);
+        a34=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a36 is %d \n",shifted4);
+        printf("a35 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a35!=shifted4))
         {
         send_alarm(36,shifted4);
+        a35=shifted4;
         }
     } 
 
@@ -1965,37 +2051,41 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a37 is %d \n",shifted1);
+        printf("a36 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a36!=shifted1))
         {
         send_alarm(37,shifted1);
+        a36=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a38 is %d \n",shifted2);
+        printf("a37 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a37 !=shifted2))
         {
         send_alarm(38,shifted2);
+        a37=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a39 is %d \n",shifted3);       
+        printf("a38 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a38!=shifted3))
         {
         send_alarm(39,shifted3);
+        a38=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a40 is %d \n",shifted4);
+        printf("a39 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a39!=shifted4))
         {
         send_alarm(40,shifted4);
+        a39=shifted4;
         }
-    }  
+    } 
 
     ret = read_tag_latest_data_from_db("Alm10","DSEPANEL",5,1,&ALM10,timestamp); 
         printf("Alarm Value 11: %lf\n",ALM10);  
@@ -2003,35 +2093,39 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a41 is %d \n",shifted1);
+        printf("a40 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a40!=shifted1))
         {
         send_alarm(41,shifted1);
+        a40=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a42 is %d \n",shifted2);
+        printf("a41 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a41 !=shifted2))
         {
         send_alarm(42,shifted2);
+        a41=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a43 is %d \n",shifted3);       
+        printf("a42 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a42!=shifted3))
         {
         send_alarm(43,shifted3);
+        a42=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a44 is %d \n",shifted4);
+        printf("a43 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a43!=shifted4))
         {
         send_alarm(44,shifted4);
+        a43=shifted4;
         }
     } 
 
@@ -2041,241 +2135,264 @@ int recievedint;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a45 is %d \n",shifted1);
+        printf("a44 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a44!=shifted1))
         {
         send_alarm(45,shifted1);
+        a44=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a46 is %d \n",shifted2);
+        printf("a45 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a45 !=shifted2))
         {
         send_alarm(46,shifted2);
+        a45=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a47 is %d \n",shifted3);       
+        printf("a46 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a46!=shifted3))
         {
         send_alarm(47,shifted3);
+        a46=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a48 is %d \n",shifted4);
+        printf("a47 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a47!=shifted4))
         {
         send_alarm(48,shifted4);
+        a47=shifted4;
         }
     } 
-
     ret = read_tag_latest_data_from_db("Alm12","DSEPANEL",5,1,&ALM12,timestamp);  
-        printf("Alarm Value : %lf\n",ALM12);  
+        printf("Alarm Value 13: %lf\n",ALM12);  
     recievedint= (int)ALM12;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a49 is %d \n",shifted1);
+        printf("a48 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a48!=shifted1))
         {
         send_alarm(49,shifted1);
+        a48=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a50 is %d \n",shifted2);
+        printf("a49 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a49 !=shifted2))
         {
-        send_alarm(51,shifted2);
+        send_alarm(50,shifted2);
+        a49=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a51 is %d \n",shifted3);       
+        printf("a50 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a50!=shifted3))
         {
         send_alarm(51,shifted3);
+        a50=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a52 is %d \n",shifted4);
+        printf("a51 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a51!=shifted4))
         {
         send_alarm(52,shifted4);
+        a51=shifted4;
         }
     } 
 
     ret = read_tag_latest_data_from_db("Alm13","DSEPANEL",5,1,&ALM13,timestamp); 
-        printf("Alarm Value 13: %lf\n",ALM13);  
+        printf("Alarm Value 14: %lf\n",ALM13);  
     recievedint= (int)ALM13;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a53 is %d \n",shifted1);
+        printf("a52 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a52!=shifted1))
         {
         send_alarm(53,shifted1);
+        a52=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a54 is %d \n",shifted2);
+        printf("a53 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a53 !=shifted2))
         {
         send_alarm(54,shifted2);
+        a53=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a55 is %d \n",shifted3);       
+        printf("a54 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a54!=shifted3))
         {
         send_alarm(55,shifted3);
+        a54=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a56 is %d \n",shifted4);
+        printf("a55 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a55!=shifted4))
         {
         send_alarm(56,shifted4);
+        a55=shifted4;
         }
     } 
 
     read_tag_latest_data_from_db("Alm14","DSEPANEL",5,1,&ALM14,timestamp); 
-        printf("Alarm Value 14: %lf\n",ALM14);  
+        printf("Alarm Value 15: %lf\n",ALM14);  
     recievedint= (int)ALM14;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a57 is %d \n",shifted1);
+        printf("a56 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a56!=shifted1))
         {
         send_alarm(57,shifted1);
+        a56=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a58 is %d \n",shifted2);
+        printf("a57 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a57 !=shifted2))
         {
         send_alarm(58,shifted2);
+        a57=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a59 is %d \n",shifted3);       
+        printf("a58 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a58!=shifted3))
         {
         send_alarm(59,shifted3);
+        a58=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a60 is %d \n",shifted4);
+        printf("a59 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a59!=shifted4))
         {
         send_alarm(60,shifted4);
+        a59=shifted4;
         }
     } 
 
-
     ret = read_tag_latest_data_from_db("Alm15","DSEPANEL",5,1,&ALM15,timestamp); 
-        printf("Alarm Value 15: %lf\n",ALM15);  
+        printf("Alarm Value 16: %lf\n",ALM15);  
     recievedint= (int)ALM15;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a61 is %d \n",shifted1);
+        printf("a60 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a60!=shifted1))
         {
         send_alarm(61,shifted1);
+        a60=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a62 is %d \n",shifted2);
+        printf("a61 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a61 !=shifted2))
         {
         send_alarm(62,shifted2);
+        a61=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a63 is %d \n",shifted3);       
+        printf("a62 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a62!=shifted3))
         {
         send_alarm(63,shifted3);
+        a62=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a64 is %d \n",shifted4);
+        printf("a63 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a63!=shifted4))
         {
         send_alarm(64,shifted4);
+        a63=shifted4;
         }
     } 
     
     ret = read_tag_latest_data_from_db("Alm16","DSEPANEL",5,1,&ALM16,timestamp); 
-        printf("Alarm Value 16: %lf\n",ALM16);  
+        printf("Alarm Value 17: %lf\n",ALM16);  
     recievedint= (int)ALM16;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a65 is %d \n",shifted1);
+        printf("a64 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a64!=shifted1))
         {
         send_alarm(65,shifted1);
+        a64=shifted1;
         }
 
         int shifted2 = ((recievedint & 3840 )>> 8 );
-        printf("a66 is %d \n",shifted2);
+        printf("a65 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if(shifted2 != 1)
+        if((shifted2 != 1) && (a65 !=shifted2))
         {
         send_alarm(66,shifted2);
+        a65=shifted2;
         }
 
         int shifted3 = ((recievedint & 240) >> 4);
-        printf("a67 is %d \n",shifted3);       
+        printf("a66 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if(shifted3 != 1)
+        if((shifted3 != 1) && (a66!=shifted3))
         {
         send_alarm(67,shifted3);
+        a66=shifted3;
         }
 
         int shifted4 = (recievedint & 15);
-        printf("a68 is %d \n",shifted4);
+        printf("a67 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if(shifted1 != 1)
+        if((shifted4 != 1) && (a67!=shifted4))
         {
         send_alarm(68,shifted4);
+        a67=shifted4;
         }
     } 
 
 
     ret = read_tag_latest_data_from_db("Alm17","DSEPANEL",5,1,&ALM17,timestamp);  
-       printf("Alarm Value 17: %lf\n",ALM17);  
+       printf("Alarm Value 18: %lf\n",ALM17);  
     recievedint= (int)ALM17;
     if (ret==0)
     {
         int shifted1 = (recievedint >> 12);
-        printf("a69 is %d \n",shifted1);
+        printf("a68 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if(shifted1 != 1)
+        if((shifted1 != 1) && (a68!=shifted1))
         {
         send_alarm(69,shifted1);
+        a68=shifted1;
         }
 
     } 
@@ -2284,6 +2401,17 @@ int recievedint;
 
 }
 
+
+void force_gps_update(void)
+{
+    if (ign_state>0)
+    {
+    printf("Forcing GPS to update\n");
+
+    system("/usr/bin/gps_poll > /dev/null &");
+    }
+
+}
 
 
 
@@ -2302,6 +2430,10 @@ poll_faults();
 else if( (argc>1) && atoi(argv[1]) == 1)
 {
 poll_alarms();
+}
+else if( (argc>1) && atoi(argv[1]) == 2)
+{
+force_gps_update();
 }
 else 
 {
@@ -2466,8 +2598,12 @@ double values;
             send_ping();
             do_function=0;
             break;
-           
-
+    
+    case 12:
+            printf("force GPS update\n");
+            force_gps_update();       
+            do_function=0;
+            break;
     default:
 
             break;
