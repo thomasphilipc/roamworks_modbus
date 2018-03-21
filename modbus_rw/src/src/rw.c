@@ -155,11 +155,11 @@ void MonitorIOLines()
 {
 // the following function checks the state of the io lines every second
 int ret;
-//printf("Function 1 from timer 1 called \n");
-//printf(" Ignstate is %d and ignfilter is %d \n\n",ign_state,ign_filter);
+
+
     // gets the latest io line states  
     ret = poll_ioline_state(prev_io_state);
-    // TO DO POWER LOSS AND RESTORE
+
     // if current read power state is LOW and the previous power state was HIGH/ on
     if ((ret==0)&&(pwr_state==1))
     {
@@ -169,18 +169,26 @@ int ret;
         {
             pwr_state=0;
             pwr_filter=0;
-            hodor=1;
+            hodor=2;
         }
     // set pwr_state to 0 to indicate unit lost power    
     }
 
-    if ((ret>0)&&(pwr_state==-1))
+    if (ret>0)
     {
-    //confirm power loss and send message  
+        if(pwr_state==-1)
+        {
+        //confirm power rest and send message  
         pwr_state=1;
         do_function=1;
-        hodor=0;
-    // set pwr_state to 0 to indicate unit lost power    
+        }
+        else if(pwr_state==0)
+        {
+        //confirm power rest and send message  
+        pwr_state=1;
+        hodor=3;
+        }
+           
     }
     // if ignition is OFF and the current ignition state is ON
     if (ret==1 && ign_state==1)
@@ -396,24 +404,17 @@ void tick_handler( int sig )
 
 
 
-
     //below functions shouf be fired right away when a change in state occurs
-    if ((ign_state==0)&&(hodor==1)&&(pwr_state!=0))
+    if ((ign_state==0)&&(hodor==1))
     { 
         do_function=4; 
         //ignition off
         hodor=0;
     }
 
-    if ((pwr_state==0)&&(hodor==1))
-    { 
-        do_function=6; 
-        //power loss
-        hodor=0;
-    }
 
 
-    if ((ign_state==1)&&(hodor==1)&&(pwr_state!=0))
+    if ((ign_state==1)&&(hodor==1))
     { 
         do_function=5;
         // ignition on
@@ -423,13 +424,22 @@ void tick_handler( int sig )
     }
 
 
+        if ((pwr_state==0)&&(hodor==2))
+    { 
+        do_function=6; 
+        //power loss
+        hodor=0;
+    }
 
-    if ((pwr_state==1)&&(hodor==1))
+        if ((pwr_state==1)&&(hodor==3))
     { 
         do_function=7; 
         //power restore
         hodor=0;
     }
+
+
+
     // re run the alarm for every second
     
     if ((tcp_status<1)&&(hodor=1))
@@ -735,9 +745,9 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
 int poll_ioline_state(int prev_io_state)
 {
 
-    // return -1 for power loss
-    // return 0 for ignition off
-    //  return 1 for ignition on
+    // return 0 for power loss
+    // return 1 for ignition off
+    //  return 2 for ignition on
 
 int ret;
 int powerstate;
