@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.0.0_3         //
+//  application version: 1.0.0_4         //
 //  updated last 20/03/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -22,6 +22,10 @@
 //changed control flag to 36
 // hardcoded power and ignition values
 // included new timer to force gps update on devices
+//1.0.0_4
+// convert engine hours to minutes
+// REG21 as int 
+// remove server change feature cause of a NI
 
 
 
@@ -50,7 +54,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.0_3"
+#define script_ver "1.0.0_4"
 
 
 // below int set to 1 will exit out the application
@@ -78,10 +82,12 @@ char logger_id[20];
 // the below parameters are the content that will be on the reports send
 int fix=0,course=-1,speed=-1,power,in7,bat=-1;
 double REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG9=-1,REG10=-1,REG11=-1,REG14=-1,REG15=-1;
-double REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1;
+double REG18=-1,REG19=-1,REG20=-1,REG22=-1,REG23=-1,REG24=-1;
 double REG8=-1,REG12=-1,REG16=-1,REG7=-1,REG17=-1,REG13=-1;
 double REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
 double REG31=-1,REG32=-1,REG33=-1,REG34=-1,REG35=-1,REG36=-1;
+int REG21=-1;
+
 double dop=-1,satsused=-1;
 char sendtime[10]="",date[11]="";
 double lat=0.0,lon=0.0,alt=0.0;
@@ -118,7 +124,7 @@ int pwr_state=-1;  // a power state hofer , we assume it is High on start up
 int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
 
 // below variables are for persistent data or defaults
-char *pers_server_hostname="87.201.44.16";
+char *pers_server_hostname="qaroam3.roamworks.com";
 unsigned short pers_server_port=6102; 
 int pers_reporting_rate=1;
 int pers_heartbeat_rate=720;
@@ -442,7 +448,7 @@ void tick_handler( int sig )
 
     // re run the alarm for every second
     
-    if ((tcp_status<1)&&(hodor=1))
+    if ((tcp_status<1)&&(hodor==1))
     {
         // a tcp connection was lost then the device restablishes the connection
         printf("reconnectin tcp\n");
@@ -497,6 +503,7 @@ void send_tcp_data(void *data)
     printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
     // call remove substring to remove -1 which indicates values not avaialable
     filterString(data,"-1.000000");    
+    filterString(data,"-1"); 
     printf("data being send is %s of length %d \n\n",data,strlen(data));
     ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
@@ -511,6 +518,7 @@ void send_tcp_data(void *data)
         printf("%d count of Message Sending failed\n",failed_msgs);    
         failed_msgs++;    
         tcp_status=-1;
+        
         hodor=1;
     }
 }
@@ -539,9 +547,8 @@ int res,ret1;
 printf("entered polling section for modbus_data\n");
 REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
 REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
-
-    double value;
-    char timestamp[26];
+double eng_hours=-1;
+char timestamp[26];
 
 
 // variables to prepare periodic information 
@@ -691,12 +698,14 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
         REG20=-1;
     } 
 
-    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",6,1,&REG21,timestamp); 
-    printf("Engine Hour Meter value :%lf\n",REG21); 
+    ret = read_tag_latest_data_from_db("Tag21","DSEPANEL",6,1,&eng_hours,timestamp); 
+    int y = (int)eng_hours;
+    REG21=(int)(y / 3600);
+    printf("Engine Hour Meter value :%d\n",REG21); 
 
     if (ret!=0)
     {
-        REG21=-1;
+        REG21=-1.000000;
     } 
 
     ret = read_tag_latest_data_from_db("Tag22","DSEPANEL",2,1,&REG22,timestamp); 
@@ -733,7 +742,7 @@ REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1
 
     update_info();
     // prepare the format of the periodic CAN message
-    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(datatosend, sizeof(datatosend), "$CANP 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     //calling send tcp to send the data
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
@@ -996,7 +1005,8 @@ int error = 0;
 socklen_t len = sizeof (error);
 int retval = getsockopt (sockfd, SOL_SOCKET, SO_ERROR, &error, &len);
 
-if (retval != 0) {
+if (retval != 0) 
+{
     /* there was a problem getting the error code */
     fprintf(stderr, "error getting socket error code: %s\n", strerror(retval));
     return -1;
@@ -1008,56 +1018,80 @@ if (error != 0) {
      return -1;
 }
 
-char *value;
+
+
+char value[20];
 
 ret=get_cellular_ip(value, 20);
-printf("Ret : %d\n",ret);
 if (ret>=0)
 {
     printf("Cell Ip is %s \n",value);
-      return 0; 
+
+    char *hostname;
+    struct hostent *hostinfo;
+
+    hostname = "qaroam3.roamworks.com";
+    hostinfo = gethostbyname (hostname);
+
+    if (hostinfo == NULL)
+        printf("Internet Connection Exists !\n");
+    else
+        printf("No Internet Connection !\n");
+
+    return 0; 
 }
 else
-    return -1;
-
- 
+    return -1; 
 }
+
+
+
 
 // function to establist tcp connection
 int connect_tcp(void)
 {
 
-    read_per();
-    server_hostname=pers_server_hostname;
-    server_port=pers_server_port;
     /* Get socket. */
     // sets the protocol to TCP
     protoent = getprotobyname(protoname);
-    if (protoent == NULL) {
+    
+    if (protoent == NULL) 
+    {
         perror("getprotobyname");
         exit(EXIT_FAILURE);
     }
     sockfd = socket(AF_INET, SOCK_STREAM, protoent->p_proto);
-    if (sockfd == -1) {
+
+    if (sockfd == -1) 
+    {
         perror("socket");
-        tcp_status=-1;
+        return -1;
         exit(EXIT_FAILURE);
     }
     else
     printf ("the sock id is %d \n ",sockfd);
 
+    read_per();
+    server_hostname=pers_server_hostname;
+    server_port=pers_server_port;
+    
+
     /* Prepare sockaddr_in. */
     // gets ip from a dns
     printf ("the servername is %s \n ",server_hostname);
     hostent = gethostbyname(server_hostname);
-    if (hostent == NULL) {
-        printf("error: gethostbyname %s\n", server_hostname);
+
+    if (hostent == NULL) 
+    {
+       // printf("error: gethostbyname %s\n", server_hostname);
         printf("No data connectivity, cant resolve dns \n");
 
     }
     //sets up address from hostent(reverse ip)
     in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
-    if (in_addr == (in_addr_t)-1) {
+
+    if (in_addr == (in_addr_t)-1) 
+    {
         printf("error: inet_addr(\"%s\")\n", *(hostent->h_addr_list));
 
     }
@@ -1068,16 +1102,18 @@ int connect_tcp(void)
 
 
         /* Do the actual connection. */
-    if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) {
+    if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) 
+    {
          printf ("TCP  connection failed closing socket\n");
          ret = shutdown(sockfd, SHUT_WR);
-         printf (" %d is the return for shutdown \n",ret);
+         //printf (" %d is the return for shutdown \n",ret);
          ret= close(sockfd);
-         printf (" %d is the return for close \n",ret);
+        // printf (" %d is the return for close \n",ret);
          tcp_status=-1;
     }
     else
         tcp_status=1;
+    
     hodor=0;
     return tcp_status;
 }
@@ -1101,9 +1137,9 @@ printf("%s\n",line);
                     break;
             case 2:
                     
-                    server_hostname=pt;
+                    //server_hostname=pt;
                     printf("new server name is %s\n",server_hostname);
-                    pers_server_hostname=server_hostname;
+                    //pers_server_hostname=server_hostname;
                     break;
             case 3: 
                     a = atoi(pt);
@@ -1177,7 +1213,7 @@ char  c;
 
 int write_per()
 {
-    printf("writing data to modbus_rw.conf\n");
+   // printf("writing data to modbus_rw.conf\n");
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.conf","w");
@@ -1247,7 +1283,7 @@ int read_per()
                     break;
             case 6:
 
-                    pers_server_hostname= pt;                  
+                    //pers_server_hostname= pt;                  
                     break;
             case 7:
                     a = atoi(pt);
@@ -1283,7 +1319,7 @@ int read_per()
 int additional_gps_data()
 {
 
-printf(" Reading additional GPS data \n");
+//printf(" Reading additional GPS data \n");
  char line[1024];
     FILE *fp;
 
@@ -2424,7 +2460,31 @@ void force_gps_update(void)
 }
 
 
+int myfloor (double val)
+{
 
+printf("Received %d in myfloor functions \n",val);
+double value=2*val;
+
+int res= (int)(value/2);
+
+int ans;
+
+ans=(int)val;
+
+if (res%2==0)
+{
+printf("performing floor \n");
+return (ans);
+}
+else
+printf("performing ciel with -1 \n");
+return (ans-1);
+
+
+
+
+}
 
 // MAIN PROGRAM CALL STARTS BELOW
 
@@ -2435,15 +2495,20 @@ printf(" argc is %d \n",argc);
 
 if((argc>1) && atoi(argv[1]) == 0)
 {
-poll_faults();
+
+//int ret1 = create_socket();
+int ret= check_tcp_status();
+printf("Ret is %d\n",ret);
 }
 else if( (argc>1) && atoi(argv[1]) == 1)
 {
 poll_alarms();
 }
-else if( (argc>1) && atoi(argv[1]) == 2)
-{
-force_gps_update();
+else if( (argc>1) )
+{   double value=atof(argv[1]);
+    int y = (int)value;
+    int x=(int)(y / 3600);
+    printf("Engine Hour Meter value :%d\n",x);
 }
 else 
 {

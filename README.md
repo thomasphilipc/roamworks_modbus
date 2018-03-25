@@ -45,7 +45,7 @@ Renamed function names and some cleaning of unused lines
 Added keep alive for preventing tcp disconnect
 corrected fix logic always being false even with valid fix
 
-1.0.0_3
+1.0.0_4
 Release Candidate 
 //1.0.0_1
 //add last known gps info if new not avaialable (avoid 0,0)
@@ -59,6 +59,11 @@ Release Candidate
 //changed control flag to 36
 // hardcoded power and ignition values
 // included new timer to force gps update on devices
+// included new timer to force gps update on devices
+//1.0.0_4
+// convert engine hours from seconds to hours
+// REG21 as int 
+// remove server change feature cause of a NI
 
 
 Task to do
