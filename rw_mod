@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+START=98
+
+boot() {
+	#create folder
+	[ -d /tmp/rw_modbus_data/ ] || mkdir /tmp/rw_modbus_data/
+	#killall rw_modbus
+	stop
+	#start rw_modbus
+    imsi=`sendat /dev/ttyACM0 AT+CIMI 1 | grep -v [a-zA-Z] | grep [0-9]`
+    if [ `expr length "$imsi"` -lt 15 ]; then
+    echo -e "2003,`date -u +%y%m%d%H%M%S`,\r" >> /etc/MODBUS_RW_Err_Events.csv
+    fi
+    /usr/bin/rw_modbus &
+}
+
+start() {
+    
+	#start rw_modbus
+    /usr/bin/rw_modbus &
+}
+
+stop() {
+
+    killall rw_modbus
+}
+reload() {
+	#ceate folder
+	[ -d /tmp/rw_modbus_data/ ] || mkdir /tmp/rw_modbus_data/
+	stop
+    /usr/bin/rw_modbus &
+
+}
+restart() {
+	#ceate folder
+	[ -d /tmp/rw_modbus_data/ ] || mkdir /tmp/rw_modbus_data/
+	stop
+    /usr/bin/rw_modbus &
+
+}
+
+reconfiguration_and_restart() {
+	start
+}
+

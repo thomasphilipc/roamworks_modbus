@@ -1,0 +1,123 @@
+#!/bin/sh /etc/rc.common
+START=98
+
+boot() {
+	#ceate folder
+	[ -d /tmp/modbus_data/ ] || mkdir /tmp/modbus_data/
+	# off signal and network leds
+	echo 0 > /sys/class/leds/e220:orange:network/brightness
+	echo 0 >  /sys/class/leds/e220:orange:signal/brightness
+	#killall modbusmaster
+	stop
+	#restart mysql server
+	/etc/init.d/mysql restart
+	if  [[ ! `ls /etc/MODBUS_Configuration_E225.csv` ]] || [[ "`ls -l /etc/MODBUS_Configuration_E225.csv  | awk '{print$5}'`" == 0 ]]; then exit ; fi;
+	#start modbus app without deleting Database
+	if [ `uci get modbus_master.@modbus_master[0].enable` == 1 ]; then
+		echo -e "0020,`date -u +%y%m%d%H%M%S`,\r" >> /etc/MODBUS_ECO_Err_Events.csv
+		##sim card detection
+                imsi=`sendat /dev/ttyACM0 AT+CIMI 1 | grep -v [a-zA-Z] | grep [0-9]`
+                if [ `expr length "$imsi"` -lt 15 ]; then
+                        echo -e "2003,`date -u +%y%m%d%H%M%S`,\r" >> /etc/MODBUS_ECO_Err_Events.csv
+                fi
+		#kill serial app
+		kill_serial
+		/usr/bin/modbusmaster -W &
+	fi
+}
+
+start() {
+	#kill serial app
+	kill_serial
+	#start modbus app
+        if [ $1 == "default_config_file" ]; then
+                /usr/bin/modbusmaster -P -A 1 &
+        else
+                /usr/bin/modbusmaster -P -A 0 &
+        fi
+        ##/usr/bin/modbusmaster -P &
+}
+
+stop() {
+    #killall modbusmaster
+    #ps | grep -i modbusmaster | grep -v grep | awk '{print $1}' | xargs kill -9
+    #ps | grep -i /usr/sbin/Eco_fargo_converter.sh | grep -v grep | awk '{print $1}' | xargs kill -9
+    killall modbusmaster
+}
+reload() {
+	#ceate folder
+	[ -d /tmp/modbus_data/ ] || mkdir /tmp/modbus_data/
+	stop
+	#kill serial app
+	if [ `uci get modbus_master.@modbus_master[0].enable` == 1 ]; then
+		kill_serial
+		#start modbus app without deleting Database
+		/usr/bin/modbusmaster -W &
+	fi
+}
+restart() {
+	#ceate folder
+	[ -d /tmp/modbus_data/ ] || mkdir /tmp/modbus_data/
+	# off signal and network leds
+	echo 0 > /sys/class/leds/e220:orange:network/brightness
+	echo 0 >  /sys/class/leds/e220:orange:signal/brightness
+
+	if [ "$1" == "reconfiguration_and_restart" ]; then
+		stop
+		echo -e "0035,`date -u +%y%m%d%H%M%S`,\r" >> /etc/MODBUS_ECO_Err_Events.csv
+		start "default_config_file"
+	else
+		stop
+	#start modbus app 
+	if [ `uci get modbus_master.@modbus_master[0].enable` == 1 ]; then
+		##delete previous config file
+		rm /etc/MODBUS_Configuration_E225.csv
+		#rm /etc/Eco_axis_MODBUS_Configuration_E225.csv
+		rm /etc/MODBUS_ECO_Err_Events*
+		rm /etc/MODBUS_fargo_Err_Events.csv
+		rm /tmp/modbus_data/modbus_status
+		##copy config file
+		cp `uci get modbus_master.@modbus_master[0].config_file` /etc/MODBUS_Configuration_E225.csv
+		#echo 'Starting Configuration file Conversion.........' > /tmp/modbus_data/modbus_status
+		##convert Eco Axis file into fargo config file
+		#/usr/sbin/Eco_fargo_converter.sh /etc/Eco_axis_MODBUS_Configuration_E225.csv /etc/MODBUS_Configuration_E225.csv
+		if  [[ ! `ls /etc/MODBUS_Configuration_E225.csv` ]] || [[ "`ls -l /etc/MODBUS_Configuration_E225.csv  | awk '{print$5}'`" == 0 ]]; then 
+			echo 'Configuration File Not Found' > /tmp/modbus_data/modbus_status
+			exit 
+		fi
+		#echo 'Configuration file Conversion completed' > /tmp/modbus_data/modbus_status
+
+		echo -e "0034,`date -u +%y%m%d%H%M%S`,\r" >> /etc/MODBUS_ECO_Err_Events.csv
+		echo -e "0035,`date -u +%y%m%d%H%M%S`,\r" >> /etc/MODBUS_ECO_Err_Events.csv
+		start "default_config_file"
+	else
+		##delete previous config file
+		rm /etc/MODBUS_Configuration_E225.csv
+		#rm /etc/Eco_axis_MODBUS_Configuration_E225.csv
+		rm /tmp/modbus_data/modbus_status
+		db_delete
+	fi	
+fi	
+}
+db_delete() {
+	#Delete Existing database
+	/usr/bin/modbusmaster -D &
+}
+# kill the serial application that used serial port
+kill_serial() {
+	check_serial=`ps | grep -i serial | grep -v grep | awk '{print $1}'`
+	if [ "$check_serial" != "" ]; then
+		ps | grep -i serial.sh | grep -v grep | awk '{print $1}' | xargs kill
+		killall serial
+	fi
+	# Disable serial application
+	serial_enable=`uci get serial.@datasendconfiguration[0].serial_enable`
+	if [ $serial_enable == 1 ]; then
+		uci set serial.@datasendconfiguration[0].serial_enable=0
+		uci commit
+	fi
+}
+reconfiguration_and_restart() {
+	start
+}
+

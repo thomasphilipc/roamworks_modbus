@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.0.0_4         //
+//  application version: 1.0.0_5         //
 //  updated last 20/03/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -23,9 +23,12 @@
 // hardcoded power and ignition values
 // included new timer to force gps update on devices
 //1.0.0_4
-// convert engine hours to minutes
+// convert engine hours from seconds to hours
 // REG21 as int 
 // remove server change feature cause of a NI
+//1.0.0_5
+// fixed an issue where the application crashes out when there is no data connectivity
+// adjusted logic to monitor data and tcp connection prior to sending message.
 
 
 
@@ -54,7 +57,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.0_4"
+#define script_ver "1.0.0_5"
 
 
 // below int set to 1 will exit out the application
@@ -130,7 +133,8 @@ int pers_reporting_rate=1;
 int pers_heartbeat_rate=720;
 int pers_ign_state=-1; // initialized state
 int pers_pwr_state=-1; // to identify fresh app install
-int keep_alive=3;
+int keep_alive=250;
+int tcp_downtime=0;
 
 
 // define individual timers 
@@ -155,6 +159,7 @@ void send_heartbeat();
 void filterString(char *s,const char *toremove);
 void ready_device();
 void force_gps_update(void);
+void force_gps_update_thread(void);
 
 // timer functions that will called when a signal is fired based on the respective timer
 void MonitorIOLines()
@@ -356,7 +361,7 @@ static int srtSchedule( void )
 
     rc3 = makeTimer("Third Timer", &thirdTimerID, 1800, 0);
 
-    rc4 = makeTimer("Fourth Timer", &fourthTimerID, 55, 55);
+    rc4 = makeTimer("Fourth Timer", &fourthTimerID, 55, 55);   // force GPS update
 
 
 
@@ -394,11 +399,6 @@ void tick_handler( int sig )
             do_function = 2; // every 5 minutes send periodic data while ignition on
         }
 
-        // send ping
-        if ((time_tracker_min%keep_alive==0))
-        {
-            do_function = 11; // every 3 minutes send a ping
-        }
 
         if (hb_tracker_min==heartbeat_rate)
         {
@@ -409,6 +409,11 @@ void tick_handler( int sig )
     }
 
 
+   // send ping
+        if ((time_tracker_sec%keep_alive==0))
+        {
+            do_function = 11; // every 3 minutes send a ping
+        }
 
     //below functions shouf be fired right away when a change in state occurs
     if ((ign_state==0)&&(hodor==1))
@@ -447,14 +452,11 @@ void tick_handler( int sig )
 
 
     // re run the alarm for every second
-    
-    if ((tcp_status<1)&&(hodor==1))
+    // keep counter to track tcp downtime
+    if (tcp_status<1)
     {
         // a tcp connection was lost then the device restablishes the connection
-        printf("reconnectin tcp\n");
-        tcp_status=connect_tcp();
-        ready_device();
-        hodor=0;
+       tcp_downtime++;
     }
     
     alarm(1);
@@ -500,11 +502,13 @@ void read_tcp_data(void)
 void send_tcp_data(void *data)
 {   
     
-    printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
+    int ret=connect_tcp();
+    
+    //printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
     // call remove substring to remove -1 which indicates values not avaialable
     filterString(data,"-1.000000");    
     filterString(data,"-1"); 
-    printf("data being send is %s of length %d \n\n",data,strlen(data));
+    //printf("data being send is %s of length %d \n\n",data,strlen(data));
     ret = send(sockfd, data, strlen(data),0);
     // check the ret abd tge size of sent data ; if the match then all data has been sent    
 
@@ -515,11 +519,11 @@ void send_tcp_data(void *data)
     }
     else
     {
-        printf("%d count of Message Sending failed\n",failed_msgs);    
-        failed_msgs++;    
+        printf("%d count of Message Sending failed and tcp downtime is %d\n",failed_msgs,tcp_downtime);    
+        failed_msgs++;  
+        ret = shutdown(sockfd, SHUT_WR);
+        ret= close(sockfd);  
         tcp_status=-1;
-        
-        hodor=1;
     }
 }
 
@@ -1085,8 +1089,11 @@ int connect_tcp(void)
     {
        // printf("error: gethostbyname %s\n", server_hostname);
         printf("No data connectivity, cant resolve dns \n");
-
+        tcp_status=-1;
     }
+    else
+    {
+
     //sets up address from hostent(reverse ip)
     in_addr = inet_addr(inet_ntoa(*(struct in_addr*)*(hostent->h_addr_list)));
 
@@ -1113,7 +1120,8 @@ int connect_tcp(void)
     }
     else
         tcp_status=1;
-    
+        tcp_downtime=0;
+    }
     hodor=0;
     return tcp_status;
 }
@@ -1220,7 +1228,7 @@ int write_per()
 
     if (fp)
     {
-        printf(" writinh following data to file : %d,%d,%d,%d,%d,%s,%d \n",pers_reporting_rate,pers_heartbeat_rate,failed_msgs,pers_ign_state,pers_pwr_state,pers_server_hostname,pers_server_port);
+        //printf(" writinh following data to file : %d,%d,%d,%d,%d,%s,%d \n",pers_reporting_rate,pers_heartbeat_rate,failed_msgs,pers_ign_state,pers_pwr_state,pers_server_hostname,pers_server_port);
         fprintf(fp,"%d,%d,%d,%d,%d,%s,%d",pers_reporting_rate,pers_heartbeat_rate,failed_msgs,pers_ign_state,pers_pwr_state,pers_server_hostname,pers_server_port);
         fclose(fp);
         sleep(2);
@@ -1235,7 +1243,7 @@ int write_per()
 
 int read_per()
 {
-    printf("reading data from modbus_rw.conf\n");
+    //printf("reading data from modbus_rw.conf\n");
 
     char line[1024];
     FILE *fp;
@@ -2453,45 +2461,29 @@ void force_gps_update(void)
     if (ign_state>0)
     {
     printf("Forcing GPS to update\n");
+    pthread_t tid;
+    //printf("Calling a thread to send data as %s",data);
+    ret = pthread_create(&tid, NULL, force_gps_update_thread, NULL);
+    if (ret != 0) 
+        printf("Error from pthread: %d\n", ret); 
 
-    system("/usr/bin/gps_poll > /dev/null &");
+
     }
 
 }
 
-
-int myfloor (double val)
+void force_gps_update_thread(void)
 {
-
-printf("Received %d in myfloor functions \n",val);
-double value=2*val;
-
-int res= (int)(value/2);
-
-int ans;
-
-ans=(int)val;
-
-if (res%2==0)
-{
-printf("performing floor \n");
-return (ans);
+system("/usr/bin/gps_poll > /dev/null &");
 }
-else
-printf("performing ciel with -1 \n");
-return (ans-1);
 
 
-
-
-}
 
 // MAIN PROGRAM CALL STARTS BELOW
 
 int main (int argc, char *argv[])
 { 
 
-printf(" argc is %d \n",argc); 
 
 if((argc>1) && atoi(argv[1]) == 0)
 {
@@ -2507,8 +2499,8 @@ poll_alarms();
 else if( (argc>1) )
 {   double value=atof(argv[1]);
     int y = (int)value;
-    int x=(int)(y / 3600);
-    printf("Engine Hour Meter value :%d\n",x);
+    double z =(y / 3600);
+    printf("Engine Hour Meter value :%lf\n",z);
 }
 else 
 {
@@ -2518,7 +2510,7 @@ int ret;
 double values;
      sleep(3);   
 
-    printf("Initialization in process \n");   
+    printf("Modbus_RW started - Initialization in process \n");   
     ret=read_per();
     ign_state=pers_ign_state;
     pwr_state=pers_pwr_state;
@@ -2532,7 +2524,7 @@ double values;
  
 
     // sleep to wait for initialisation
-    sleep(3);
+    sleep(60);
 
     
     
@@ -2553,7 +2545,11 @@ double values;
 
 
     printf ("The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
-    connect_tcp();   
+    ret=connect_tcp();   
+    if (ret>0)
+    printf("Data connection present\n");
+    else
+    printf("Data connection not available\n");
     
     
     //sends the login message
@@ -2566,7 +2562,7 @@ double values;
     ret=srtSchedule();
     if (ret==0)
     {
-    printf("THE AUXILLARY TIMERS HAVE STARTED, monitor io lines, read tcp data , restart application\n");
+    printf("4 additional timers started, monitor io lines, read tcp data , restart application, force gps update\n");
     }
     
     alarm(1);  /* Request SIGALRM each second*/
@@ -2669,7 +2665,7 @@ double values;
             printf("Restart shouf have occured and this line will not be shown \n");  
 
     case 11:
-            printf("keep aliveping\n");
+            printf("keep alive\n");
             send_ping();
             do_function=0;
             break;
@@ -2690,9 +2686,7 @@ double values;
     read_per();
     write_per();
     ret = shutdown(sockfd, SHUT_WR);
-    printf (" %d is the return for shutdown \n",ret);
     ret= close(sockfd);
-    printf (" %d is the return for close \n",ret);
     printf("The application has closed \n");
 
 
