@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.0.0_5         //
+//  application version: 1.0.0_6         //
 //  updated last 20/03/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -29,6 +29,11 @@
 //1.0.0_5
 // fixed an issue where the application crashes out when there is no data connectivity
 // adjusted logic to monitor data and tcp connection prior to sending message.
+//1.0.0_6
+// fixed bug with imei being overwritten 
+// restart over the air
+// implemented logging
+// log file in etc
 
 
 
@@ -57,7 +62,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.0_5"
+#define script_ver "1.0.0_6"
 
 
 // below int set to 1 will exit out the application
@@ -79,8 +84,8 @@ int reporting_rate =2;
 int heartbeat_rate=720;
 int force_update_gps_rate=5;
 // the below parameters are expected to be static and wouf not change after configuration
-char imei[15];
-char logger_id[20];
+char imei[16]="35xxxxxxxxxxxxx";
+char logger_id[15]="default_config";
 
 // the below parameters are the content that will be on the reports send
 int fix=0,course=-1,speed=-1,power,in7,bat=-1;
@@ -169,7 +174,7 @@ int logger(void *log)
     
     time_t now = time (0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
-    printf("writing log to modbus_rw.log\n");
+    printf("writing log to modbus_rw.log %s \n",log);
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.log","a");
@@ -334,7 +339,7 @@ static void timerHandler( int sig, siginfo_t *si, void *uc )
     // if signal originated by third timer then call function RestartApplication()
       RestartApplication();
     else if ( *tidp == fourthTimerID )
-    // if signal originated by third timer then call function RestartApplication()
+    // if signal originated by third timer then call function force_gps_update()
       force_gps_update();
 
 
@@ -522,6 +527,10 @@ void read_tcp_data(void)
         else if (strstr(read_buff, "server") != NULL) 
         {
             change_server(read_buff);
+        }
+        else if (strstr(read_buff, "reboot") != NULL) 
+        {
+            RestartApplication();
         }
 
         bzero(read_buff,1024);
@@ -855,6 +864,12 @@ void update_info(void)
     // power and ignition state   
     power=pwr_state;
     in7=ign_state;
+    
+
+    //get the loggerid - this will be from the CSV file uploaded to master_modbus
+    ret = get_loggerid(logger_id); 
+    //obtain imei number
+    ret = get_imei (imei, 15); 
 
  
    // obtain time and date
@@ -1031,7 +1046,11 @@ void send_heartbeat(void)
 // function to send the sign on 
 void ready_device(void)
 {
- 
+        //get the loggerid - this will be from the CSV file uploaded to master_modbus
+    ret = get_loggerid(logger_id); 
+    //obtain imei number
+    ret = get_imei (imei, 15); 
+
     //for DEBUG purpose only
     //printf("The device has just stoped \n");  
     int ret;
@@ -2563,7 +2582,7 @@ else
 char* timestamps;
 int ret;
 double values;
-     sleep(3);   
+     sleep(10);   
 
     sprintf(log,"Modbus_RW started - Initialization in process \n"); 
     logger(log);  
@@ -2584,12 +2603,12 @@ double values;
     sleep(30);
 
     
-    
-
     //get the loggerid - this will be from the CSV file uploaded to master_modbus
     ret = get_loggerid(logger_id); 
     //obtain imei number
     ret = get_imei (imei, 15);
+
+
 
     // create a signal/alarm to tick every second and assign the tick handler
     struct sigaction sact;

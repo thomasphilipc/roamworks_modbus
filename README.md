@@ -67,6 +67,10 @@ Release Candidate
 //1.0.0_6
 // added log
 // handling of socket closing.
+// fixed bug with imei being overwritten 
+// restart over the air
+// implemented logging
+// log file in etc
 
 Task to do
 Delete database periodically to control usage 
