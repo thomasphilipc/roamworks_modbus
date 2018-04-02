@@ -34,6 +34,8 @@
 // restart over the air
 // implemented logging
 // log file in etc
+//1.0.0_7
+// implemented a process to send log file on every reboot of application. 
 
 
 
@@ -62,7 +64,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.0_6"
+#define script_ver "1.0.0_7"
 
 
 // below int set to 1 will exit out the application
@@ -174,7 +176,7 @@ int logger(void *log)
     
     time_t now = time (0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
-    printf("writing log to modbus_rw.log %s \n",log);
+    printf("Logging : %s \n",log);
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.log","a");
@@ -299,8 +301,23 @@ void Read_TCP_Data()
 
 void RestartApplication()
 {
+  sprintf(log,"restart the application\n");
+            logger(log);
+            alarm(0);
+            sleep(3);
+            ret = shutdown(sockfd, SHUT_WR);
+            sprintf (log," %d is the return for shutdown \n",ret);
+            logger(log);
+            ret= close(sockfd);
+            sprintf (log," %d is the return for close \n",ret);
+            logger(log);
+            system("ssmtp talk2tpc@gmail.com < /etc/modbus_rw.log");
+            printf("Email should have been sent\n");
+            system("rm /etc/modbus_rw.log");
+            sleep(5);
 
-do_function=10;
+            exit(0);
+
 }
 
 
@@ -555,8 +572,7 @@ void send_tcp_data(void *data)
 }
 else
 {
-    sprintf(log," Send_TCP_DATA - %s\n",data);
-logger(log);
+
     //printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
     // call remove substring to remove -1 which indicates values not avaialable
     filterString(data,"-1.000000");    
@@ -567,12 +583,14 @@ logger(log);
 
     if (ret == (strlen(data)))
     {
-
-        sprintf(log,"Message sent via tcp\n");
+        sprintf(log," Send_TCP_DATA - success - %s\n",data);
         logger(log);
+        
     }
     else
     {
+        sprintf(log," Send_TCP_DATA - failed - %s\n",data);
+        logger(log);
         sprintf(log,"%d count of Message Sending failed and tcp downtime is %d\n",failed_msgs,tcp_downtime);    
         logger(log);
         failed_msgs++;  
@@ -1139,8 +1157,8 @@ int connect_tcp(void)
         exit(EXIT_FAILURE);
     }
     else
-    sprintf (log,"the sock id is %d \n ",sockfd);
-logger(log);
+    sprintf (log,"Connect_TCP : sock id is %d \n ",sockfd);
+    logger(log);
 
     read_per();
     server_hostname=pers_server_hostname;
@@ -1149,15 +1167,15 @@ logger(log);
 
     /* Prepare sockaddr_in. */
     // gets ip from a dns
-    sprintf (log,"the servername is %s \n ",server_hostname);
-logger(log);
+    //sprintf (log,"the servername is %s \n ",server_hostname);
+    //logger(log);
     hostent = gethostbyname(server_hostname);
 
     if (hostent == NULL) 
     {
        // printf("error: gethostbyname %s\n", server_hostname);
         sprintf(log,"No data connectivity, cant resolve dns \n");
-logger(log);
+        logger(log);
         tcp_status=-1;
                  ret = shutdown(sockfd, SHUT_WR);
          //printf (" %d is the return for shutdown \n",ret);
@@ -1185,7 +1203,7 @@ logger(log);
     if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) 
     {
          sprintf (log,"TCP  connection failed closing socket\n");
-logger(log);
+         logger(log);
          ret = shutdown(sockfd, SHUT_WR);
          //printf (" %d is the return for shutdown \n",ret);
          ret= close(sockfd);
@@ -1392,7 +1410,7 @@ int read_per()
     }
     else
     sprintf(log,"Creating modbus_rw.conf\n");
-logger(log);
+    logger(log);
     }    
     return 0;
 
@@ -1431,16 +1449,16 @@ int additional_gps_data()
                     switch(linenum)
 {   
                     case 1:
-                    printf(log,"Time is %s \n",t);
+                    //printf(log,"Time is %s \n",t);
                             break;
                     case 2:
-                    printf("Latitude is %s \n",t);
+                    //printf("Latitude is %s \n",t);
                             break;
                     //case 3:
                     //printf("N/S is %s \n",t);
                     //        break;
                     case 4:
-                    printf("Longitude is %s \n",t);
+                    //printf("Longitude is %s \n",t);
                             break;
                     //case 5:
                     //printf("E/W is %s \n",t);
@@ -1449,11 +1467,11 @@ int additional_gps_data()
                     //printf("PositionFix is %s \n",t);
                     //        break;
                     case 7:
-                    printf("Number of Satellites is %s \n",t);
+                    //printf("Number of Satellites is %s \n",t);
                             satsused=atoi(t);
                             break;
                     case 8:
-                    printf("Hdop is %s \n",t);
+                    //printf("Hdop is %s \n",t);
                             dop=atof(t);
                             break;
                     //case 9:
@@ -2645,8 +2663,8 @@ double values;
     ret=srtSchedule();
     if (ret==0)
     {
-    sprintf(log,"4 additional timers started, monitor io lines, read tcp data , restart application, force gps update\n");
-logger(log);
+    sprintf(log,"Additonal Timers started\n");
+    logger(log);
     }
     
     alarm(1);  /* Request SIGALRM each second*/
@@ -2740,8 +2758,8 @@ logger(log);
             break;
 
     case 9:
-            sprintf(log,"checking for incoming messages\n");
-            logger(log);
+           // sprintf(log,"checking for incoming messages\n");
+            //logger(log);
             read_tcp_data();
             do_function=0;
             break;
@@ -2757,18 +2775,18 @@ logger(log);
             ret= close(sockfd);
             sprintf (log," %d is the return for close \n",ret);
             logger(log);
-            execve("/usr/bin/modbus_rw",NULL,NULL);
+            exit(0);
             printf("Restart shouf have occured and this line will not be shown \n");  
 
     case 11:
-            sprintf(log,"keep alive\n");
+            sprintf(log,"ping\n");
             logger(log);
             send_ping();
             do_function=0;
             break;
     
     case 12:
-            sprintf(log,"force GPS update\n");
+            sprintf(log,"GPS update\n");
             logger(log);
             force_gps_update();       
             do_function=0;
@@ -2785,7 +2803,7 @@ logger(log);
     write_per();
     ret = shutdown(sockfd, SHUT_WR);
     ret= close(sockfd);
-    sprintf(log,"The application has closed \n");
+    sprintf(log,"modbus_rw terminated\n");
     logger(log);
 
 
