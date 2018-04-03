@@ -36,6 +36,11 @@
 // log file in etc
 //1.0.0_7
 // implemented a process to send log file on every reboot of application. 
+//1.0.0_8
+//enabled fault to be send to the platform.
+
+//1.0.1
+//Release Candidate
 
 
 
@@ -64,7 +69,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.0_7"
+#define script_ver "1.0.1"
 
 
 // below int set to 1 will exit out the application
@@ -106,8 +111,8 @@ double lastknownlat=0.0,lastknownlon=0.0,lastknownalt=0.0;
 char  datatosend[1024]; // write
 char buff[100];         // time
 char read_buff[100];    // read
-char log[250];
-// below variable are to handle fucntion responses
+char log[250];          // logger
+// below variable are to handle function responses
 int ret = -1, i, res,ret1;
 // hofs the timestamps
 char timestamp[26];
@@ -170,7 +175,7 @@ void force_gps_update(void);
 void force_gps_update_thread(void);
 
 
-
+// Below function logs details that are send to it to a file called modbus_rw.log
 int logger(void *log)
 {
     
@@ -191,6 +196,8 @@ int logger(void *log)
     }
     else
     printf("Writing to log failed\n");
+    
+    bzero(log,250);
 
     return -1;
     
@@ -410,7 +417,7 @@ static int srtSchedule( void )
 
     rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);   // defined to read tcp for new data every 30 seconds
 
-    rc3 = makeTimer("Third Timer", &thirdTimerID, 1800, 0);
+    rc3 = makeTimer("Third Timer", &thirdTimerID, 1800, 0);    // restart application every thirty minutes
 
     rc4 = makeTimer("Fourth Timer", &fourthTimerID, 55, 55);   // force GPS update
 
@@ -1778,8 +1785,11 @@ void send_alarm(int alarm, int value)
     int alm= alarm;
     int val = value;
 
+if ((val>1 && val <5) || (val==10))
+{
+
 printf(" Alarm will be send for alarm %d with value %d \n",alm,val);
-/*
+
 
     update_info();
 
@@ -1788,7 +1798,8 @@ printf(" Alarm will be send for alarm %d with value %d \n",alm,val);
 
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
     pthread_join(thread_id,NULL);
-*/
+
+}
 }
 
 
@@ -2555,6 +2566,7 @@ void force_gps_update(void)
 {
     if (ign_state>0)
     {
+
     printf("Forcing GPS to update\n");
     pthread_t tid;
     //printf("Calling a thread to send data as %s",data);
@@ -2564,6 +2576,7 @@ void force_gps_update(void)
 
 
     }
+        poll_alarms();
 
 }
 

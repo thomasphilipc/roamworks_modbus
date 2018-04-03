@@ -1,6 +1,6 @@
 # Maestro Modbus
-Current Stable Version: 
-Current Build Version:1.0.0_7
+Current Stable Version: 1.0.1
+Current Build Version:1.0.0_8
 
 Modbus_rw is an application that runs on the Maestro RTU. The application gathers modbus data and ignition, power information and packages this data which is then send to the ROAM application
 
@@ -72,9 +72,11 @@ Release Candidate
 // implemented logging
 // log file in etc
 //1.0.0_7
-// implemented a process to send log file on every reboot of application.
+// implemented a process to send log file on every reboot of application 30 mintur.
 //modified reboot logic
 //verifed ota reboot
+//1.0.0_8
+//enabled faults to be read every minute
 
 Task to do
 Delete database periodically to control usage 
