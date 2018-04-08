@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.0.0_6         //
+//  application version: 1.1.0         //
 //  updated last 20/03/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -41,6 +41,8 @@
 
 //1.0.1
 //Release Candidate
+//1.0.1_1
+//interchange the line to line and line to neutral avg voltage
 
 
 
@@ -69,7 +71,7 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.0.1"
+#define script_ver "1.1.0"
 
 
 // below int set to 1 will exit out the application
@@ -140,9 +142,9 @@ int pwr_state=-1;  // a power state hofer , we assume it is High on start up
 int pwr_filter=0; // a filter implementation via counter to check if the state is stable for the entire duration
 
 // below variables are for persistent data or defaults
-char *pers_server_hostname="qaroam3.roamworks.com";
+char *pers_server_hostname="hems.roamworks.com";
 unsigned short pers_server_port=6102; 
-int pers_reporting_rate=1;
+int pers_reporting_rate=5;
 int pers_heartbeat_rate=720;
 int pers_ign_state=-1; // initialized state
 int pers_pwr_state=-1; // to identify fresh app install
@@ -160,9 +162,6 @@ timer_t fourthTimerID;
 int poll_ioline_state(int);
 int prev_io_state=-1;
 
-// faults
-int a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40;
-int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65,a66,a67,a68;
 
 // declaration of functions
 void update_info();
@@ -181,7 +180,7 @@ int logger(void *log)
     
     time_t now = time (0);
     strftime (buff, 100, "%Y-%m-%d %H:%M:%S.000", localtime (&now));
-    printf("Logging : %s \n",log);
+   // printf("Logging : %s \n",log);
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.log","a");
@@ -318,9 +317,9 @@ void RestartApplication()
             ret= close(sockfd);
             sprintf (log," %d is the return for close \n",ret);
             logger(log);
-            system("ssmtp talk2tpc@gmail.com < /etc/modbus_rw.log");
-            printf("Email should have been sent\n");
-            system("rm /etc/modbus_rw.log");
+            // system("ssmtp talk2tpc@gmail.com < /etc/modbus_rw.log");
+            //printf("Email should have been sent\n");
+            //system("rm /etc/modbus_rw.log");
             sleep(5);
 
             exit(0);
@@ -581,7 +580,7 @@ else
 {
 
     //printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
-    // call remove substring to remove -1 which indicates values not avaialable
+    // call remove substring to remove -1 and -1.0000 which indicates values not avaialable
     filterString(data,"-1.000000");    
     filterString(data,"-1"); 
     //printf("data being send is %s of length %d \n\n",data,strlen(data));
@@ -670,20 +669,22 @@ char timestamp[26];
     } 
 
 
-    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",3,1,&REG4,timestamp); 
+    ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",3,1,&REG4,timestamp); 
     printf("Average L to L Voltage :%lf\n",REG4); 
 
     if (ret!=0)
     {
         REG4=-1;
     } 
-       ret = read_tag_latest_data_from_db("Tag5","DSEPANEL",3,1,&REG5,timestamp); 
+    
+    ret = read_tag_latest_data_from_db("Tag4","DSEPANEL",3,1,&REG5,timestamp); 
     printf("Average L to N Voltage :%lf\n",REG5); 
 
     if (ret!=0)
     {
         REG5=-1;
     }
+
     ret = read_tag_latest_data_from_db("Tag6","DSEPANEL",3,1,&REG6,timestamp); 
     printf("Average AC RMS Current :%lf\n",REG6); 
     if (ret!=0)
@@ -1502,9 +1503,10 @@ linenum++;
   
     }
     else
+    {
     sprintf(log,"Add_GPS_Data - No fix available \n");
-logger(log);
-
+    logger(log);
+    }
 return 0;
 }
 
@@ -1790,10 +1792,11 @@ if ((val>1 && val <5) || (val==10))
 
 printf(" Alarm will be send for alarm %d with value %d \n",alm,val);
 
+ret = get_loggerid(logger_id); 
 
     update_info();
 
-    snprintf(datatosend, sizeof(datatosend), "$ALM 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,%d,,%s,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,in7,dop,satsused,logger_id,alm,val);
+    snprintf(datatosend, sizeof(datatosend), "$ALM 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,1,%lf,%lf,alarm,%s,%d,%d\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,logger_id,alm,val);
 
 
     pthread_t thread_id = launch_thread_send_data((void*)datatosend);
@@ -1813,6 +1816,10 @@ int ret;
 printf("entered section to read alarms\n");
 double ALM0=-1,ALM1=-1,ALM2=-1,ALM3=-1,ALM4=-1,ALM5=-1,ALM6=-1,ALM7=-1,ALM8=-1,ALM9=-1,ALM10=-1,ALM11=-1,ALM12=-1,ALM13=-1,ALM14=-1,ALM15=-1, ALM16=-1,ALM17=-1;
 int recievedint;
+// faults init to be triggered always
+int a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12,a13,a14,a15,a16,a17,a18,a19,a20,a21,a22,a23,a24,a25,a26,a27,a28,a29,a30,a31,a32,a33,a34,a35,a36,a37,a38,a39,a40;
+int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,a60,a61,a62,a63,a64,a65,a66,a67,a68;
+
 
     double value;
     char timestamp[26];
@@ -1832,8 +1839,10 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a0 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a0!=shifted1))
+        
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a0!=shifted1))
         {
+        
         send_alarm(1,shifted1);
         a0=shifted1;
         }
@@ -1841,7 +1850,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a1 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a1!=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a1!=shifted2))
         {
         send_alarm(2,shifted2);
         a1=shifted2;
@@ -1850,7 +1859,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a2 is %d \n",shifted3);       
         //parse_alarm(shifted3);ma
-        if((shifted3 != 1) && (a2!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a2!=shifted3))
         {
         send_alarm(3,shifted3);
         a2=shifted3;
@@ -1859,7 +1868,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a3 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a2!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a2!=shifted4))
         {
         send_alarm(4,shifted4);
         a3=shifted4;
@@ -1874,7 +1883,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a4 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a4!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a4!=shifted1))
         {
         send_alarm(5,shifted1);
         a4=shifted1;
@@ -1883,7 +1892,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a5 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a5!=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a5!=shifted2))
         {
         send_alarm(6,shifted2);
         a5=shifted2;
@@ -1892,7 +1901,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a6 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a6!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a6!=shifted3))
         {
         send_alarm(7,shifted3);
         a6=shifted3;
@@ -1901,7 +1910,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a7 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a7!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a7!=shifted4))
         {
         send_alarm(8,shifted4);
         a7=shifted4;
@@ -1916,7 +1925,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a8 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a8!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a8!=shifted1))
         {
         send_alarm(9,shifted1);
         a8=shifted1;
@@ -1925,7 +1934,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a9 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a9 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a9 !=shifted2))
         {
         send_alarm(10,shifted2);
         a9=shifted2;
@@ -1934,7 +1943,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a10 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a10!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a10!=shifted3))
         {
         send_alarm(11,shifted3);
         a10=shifted3;
@@ -1943,7 +1952,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a11 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a11!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a11!=shifted4))
         {
         send_alarm(12,shifted4);
         a11=shifted4;
@@ -1958,7 +1967,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a12 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a12!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a12!=shifted1))
         {
         send_alarm(13,shifted1);
         a12=shifted1;
@@ -1967,7 +1976,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a13 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a13 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a13 !=shifted2))
         {
         send_alarm(14,shifted2);
         a13=shifted2;
@@ -1976,7 +1985,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a14 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a14!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a14!=shifted3))
         {
         send_alarm(15,shifted3);
         a14=shifted3;
@@ -1985,7 +1994,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a15 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a15!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a15!=shifted4))
         {
         send_alarm(16,shifted4);
         a15=shifted4;
@@ -2000,7 +2009,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a16 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a16!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a16!=shifted1))
         {
         send_alarm(17,shifted1);
         a16=shifted1;
@@ -2009,7 +2018,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a17 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a17 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a17 !=shifted2))
         {
         send_alarm(18,shifted2);
         a17=shifted2;
@@ -2018,7 +2027,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a18 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a18!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a18!=shifted3))
         {
         send_alarm(19,shifted3);
         a18=shifted3;
@@ -2027,7 +2036,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a19 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a19!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a19!=shifted4))
         {
         send_alarm(20,shifted4);
         a19=shifted4;
@@ -2042,7 +2051,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a20 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a20!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a20!=shifted1))
         {
         send_alarm(21,shifted1);
         a20=shifted1;
@@ -2051,7 +2060,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a21 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a21 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a21 !=shifted2))
         {
         send_alarm(22,shifted2);
         a21=shifted2;
@@ -2060,7 +2069,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a22 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a22!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a22!=shifted3))
         {
         send_alarm(23,shifted3);
         a22=shifted3;
@@ -2069,7 +2078,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a23 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a23!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a23!=shifted4))
         {
         send_alarm(24,shifted4);
         a23=shifted4;
@@ -2085,7 +2094,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a24 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a24!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a24!=shifted1))
         {
         send_alarm(25,shifted1);
         a24=shifted1;
@@ -2094,7 +2103,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a25 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a25 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a25 !=shifted2))
         {
         send_alarm(26,shifted2);
         a25=shifted2;
@@ -2103,7 +2112,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a26 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a26!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a26!=shifted3))
         {
         send_alarm(27,shifted3);
         a26=shifted3;
@@ -2112,7 +2121,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a27 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a27!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a27!=shifted4))
         {
         send_alarm(28,shifted4);
         a27=shifted4;
@@ -2128,7 +2137,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a28 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a28!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a28!=shifted1))
         {
         send_alarm(29,shifted1);
         a28=shifted1;
@@ -2137,7 +2146,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a29 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a29 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a29 !=shifted2))
         {
         send_alarm(30,shifted2);
         a29=shifted2;
@@ -2146,7 +2155,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a30 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a30!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a30!=shifted3))
         {
         send_alarm(31,shifted3);
         a30=shifted3;
@@ -2155,7 +2164,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a31 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a31!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a31!=shifted4))
         {
         send_alarm(32,shifted4);
         a31=shifted4;
@@ -2171,7 +2180,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a32 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a32!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a32!=shifted1))
         {
         send_alarm(33,shifted1);
         a32=shifted1;
@@ -2180,7 +2189,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a33 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a33 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a33 !=shifted2))
         {
         send_alarm(34,shifted2);
         a33=shifted2;
@@ -2189,7 +2198,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a34 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a34!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a34!=shifted3))
         {
         send_alarm(35,shifted3);
         a34=shifted3;
@@ -2198,7 +2207,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a35 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a35!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a35!=shifted4))
         {
         send_alarm(36,shifted4);
         a35=shifted4;
@@ -2213,7 +2222,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a36 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a36!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a36!=shifted1))
         {
         send_alarm(37,shifted1);
         a36=shifted1;
@@ -2222,7 +2231,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a37 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a37 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a37 !=shifted2))
         {
         send_alarm(38,shifted2);
         a37=shifted2;
@@ -2231,7 +2240,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a38 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a38!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a38!=shifted3))
         {
         send_alarm(39,shifted3);
         a38=shifted3;
@@ -2240,7 +2249,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a39 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a39!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a39!=shifted4))
         {
         send_alarm(40,shifted4);
         a39=shifted4;
@@ -2255,7 +2264,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a40 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a40!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a40!=shifted1))
         {
         send_alarm(41,shifted1);
         a40=shifted1;
@@ -2264,7 +2273,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a41 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a41 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a41 !=shifted2))
         {
         send_alarm(42,shifted2);
         a41=shifted2;
@@ -2273,7 +2282,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a42 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a42!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a42!=shifted3))
         {
         send_alarm(43,shifted3);
         a42=shifted3;
@@ -2282,7 +2291,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a43 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a43!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a43!=shifted4))
         {
         send_alarm(44,shifted4);
         a43=shifted4;
@@ -2297,7 +2306,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a44 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a44!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a44!=shifted1))
         {
         send_alarm(45,shifted1);
         a44=shifted1;
@@ -2306,7 +2315,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a45 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a45 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a45 !=shifted2))
         {
         send_alarm(46,shifted2);
         a45=shifted2;
@@ -2315,7 +2324,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a46 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a46!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a46!=shifted3))
         {
         send_alarm(47,shifted3);
         a46=shifted3;
@@ -2324,7 +2333,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a47 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a47!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a47!=shifted4))
         {
         send_alarm(48,shifted4);
         a47=shifted4;
@@ -2338,7 +2347,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a48 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a48!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a48!=shifted1))
         {
         send_alarm(49,shifted1);
         a48=shifted1;
@@ -2347,7 +2356,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a49 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a49 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a49 !=shifted2))
         {
         send_alarm(50,shifted2);
         a49=shifted2;
@@ -2356,7 +2365,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a50 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a50!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a50!=shifted3))
         {
         send_alarm(51,shifted3);
         a50=shifted3;
@@ -2365,7 +2374,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a51 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a51!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a51!=shifted4))
         {
         send_alarm(52,shifted4);
         a51=shifted4;
@@ -2380,7 +2389,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a52 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a52!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a52!=shifted1))
         {
         send_alarm(53,shifted1);
         a52=shifted1;
@@ -2389,7 +2398,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a53 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a53 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a53 !=shifted2))
         {
         send_alarm(54,shifted2);
         a53=shifted2;
@@ -2398,7 +2407,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a54 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a54!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a54!=shifted3))
         {
         send_alarm(55,shifted3);
         a54=shifted3;
@@ -2407,7 +2416,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a55 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a55!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a55!=shifted4))
         {
         send_alarm(56,shifted4);
         a55=shifted4;
@@ -2422,7 +2431,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a56 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a56!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a56!=shifted1))
         {
         send_alarm(57,shifted1);
         a56=shifted1;
@@ -2431,7 +2440,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a57 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a57 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a57 !=shifted2))
         {
         send_alarm(58,shifted2);
         a57=shifted2;
@@ -2440,7 +2449,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a58 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a58!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a58!=shifted3))
         {
         send_alarm(59,shifted3);
         a58=shifted3;
@@ -2449,7 +2458,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a59 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a59!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a59!=shifted4))
         {
         send_alarm(60,shifted4);
         a59=shifted4;
@@ -2464,7 +2473,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a60 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a60!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a60!=shifted1))
         {
         send_alarm(61,shifted1);
         a60=shifted1;
@@ -2473,7 +2482,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a61 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a61 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a61 !=shifted2))
         {
         send_alarm(62,shifted2);
         a61=shifted2;
@@ -2482,7 +2491,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a62 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a62!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a62!=shifted3))
         {
         send_alarm(63,shifted3);
         a62=shifted3;
@@ -2491,7 +2500,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a63 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a63!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a63!=shifted4))
         {
         send_alarm(64,shifted4);
         a63=shifted4;
@@ -2506,7 +2515,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a64 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a64!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a64!=shifted1))
         {
         send_alarm(65,shifted1);
         a64=shifted1;
@@ -2515,7 +2524,7 @@ int recievedint;
         int shifted2 = ((recievedint & 3840 )>> 8 );
         printf("a65 is %d \n",shifted2);
         //parse_alarm(shifted2);
-        if((shifted2 != 1) && (a65 !=shifted2))
+        if(((shifted2 > 1)&& (shifted2 < 15)) && (a65 !=shifted2))
         {
         send_alarm(66,shifted2);
         a65=shifted2;
@@ -2524,7 +2533,7 @@ int recievedint;
         int shifted3 = ((recievedint & 240) >> 4);
         printf("a66 is %d \n",shifted3);       
         //parse_alarm(shifted3);
-        if((shifted3 != 1) && (a66!=shifted3))
+        if(((shifted3 > 1)&& (shifted3 < 15)) && (a66!=shifted3))
         {
         send_alarm(67,shifted3);
         a66=shifted3;
@@ -2533,7 +2542,7 @@ int recievedint;
         int shifted4 = (recievedint & 15);
         printf("a67 is %d \n",shifted4);
         //parse_alarm(shifted4);
-        if((shifted4 != 1) && (a67!=shifted4))
+        if(((shifted4 > 1)&& (shifted4 < 15)) && (a67!=shifted4))
         {
         send_alarm(68,shifted4);
         a67=shifted4;
@@ -2549,7 +2558,7 @@ int recievedint;
         int shifted1 = (recievedint >> 12);
         printf("a68 is %d \n",shifted1);
         //parse_alarm(shifted1);
-        if((shifted1 != 1) && (a68!=shifted1))
+        if(((shifted1 > 1)&& (shifted1 < 15)) && (a68!=shifted1))
         {
         send_alarm(69,shifted1);
         a68=shifted1;
