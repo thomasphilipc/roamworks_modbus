@@ -1,6 +1,6 @@
 .SUFFIXES: .tar.gz .c
-PKG_RELEASE:=1
-PKG_VERSION:=1.0
+PKG_RELEASE:=0
+PKG_VERSION:=1.1
 IDIR=./inc
 ODIR=./obj
 BIN=./

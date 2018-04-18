@@ -41,8 +41,13 @@
 
 //1.0.1
 //Release Candidate
-//1.0.1_1
+//1.1.1_1
 //interchange the line to line and line to neutral avg voltage
+//1.1.1_2
+// added more information on the poll response
+// added device calculation when average are not read
+
+
 
 
 
@@ -53,6 +58,9 @@
 //used of modbus master
 #include "database.h"
 #include "generic_info.h"
+
+// new DB to store failed messages
+#include "mysql/mysql.h"
 
 // used for alarms and signals
 #include <signal.h>
@@ -71,7 +79,12 @@
 #include <errno.h>
 #include <arpa/inet.h> 
 
-#define script_ver "1.1.0"
+#define script_ver "1.1.1_2"
+
+typedef struct message
+{
+    char content[500];
+}record;
 
 
 // below int set to 1 will exit out the application
@@ -143,7 +156,7 @@ int pwr_filter=0; // a filter implementation via counter to check if the state i
 
 // below variables are for persistent data or defaults
 char *pers_server_hostname="hems.roamworks.com";
-unsigned short pers_server_port=6102; 
+unsigned short pers_server_port=7103; 
 int pers_reporting_rate=5;
 int pers_heartbeat_rate=720;
 int pers_ign_state=-1; // initialized state
@@ -818,7 +831,23 @@ char timestamp[26];
         REG24=-1;
     } 
    
-   
+// device side calculation for evaluating average values if the panel/modbus master is not providing
+//avg line to line   
+ if (REG4==-1)
+{
+        REG4=((REG7+REG11+REG15)/3);
+}
+//avg line to neutral
+    if (REG5==-1)
+{
+        REG5=((REG8+REG12+REG16)/3);
+}
+//avg current
+    if (REG6==-1)
+{
+        REG6=((REG9+REG13+REG17)/3);
+}
+
 
   
 
@@ -840,9 +869,10 @@ char timestamp[26];
 int poll_ioline_state(int prev_io_state)
 {
 
+    // return -1 for no change
     // return 0 for power loss
     // return 1 for ignition off
-    //  return 2 for ignition on
+    // return 2 for ignition on
 
 int ret;
 int powerstate;
@@ -952,7 +982,7 @@ void send_poll_response(void)
     printf("sending poll resp\n");
 
      // prepare the format of the powerloss message
-    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s\r",imei,sendtime,date,lat,lon,fix,power,logger_id);
+    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s,%s,%d,%d,%d,%d,%s,%d\r",imei,sendtime,date,lat,lon,fix,power,script_ver,logger_id,pwr_state,ign_state,pers_reporting_rate,pers_heartbeat_rate,pers_server_hostname,pers_server_port);
 
     pthread_t thread_id = launch_thread_send_data((void*)poll_command);
     pthread_join(thread_id,NULL);
@@ -2618,6 +2648,40 @@ else if( (argc>1) )
 }
 else 
 {
+
+// testing mysql below
+MYSQL mysql;
+if(mysql_init(&mysql)==NULL) {
+printf("\nInitialization error\n");
+return 0;
+}
+mysql_real_connect(&mysql,"localhost","root","M@estroW1rele$$","dbnametest",0,NULL,0);
+printf("Client version: %s",mysql_get_client_info());
+printf("\nServer version: %s",mysql_get_server_info(&mysql));
+mysql_close(&mysql);
+
+FILE *fp1,*fp2;
+    record det;
+    int recsize;
+
+  fp1 = fopen("record.dat" , "r+");
+    if(fp1 == NULL)
+    {
+        fp1 = fopen("record.dat" , "w+");
+        if(fp1 == NULL)
+        {
+            printf("error in opening file : \n");
+            return -1;
+        }
+    }
+        recsize = sizeof(det);
+
+    fseek(fp1 , 0 ,SEEK_END);
+    sprintf(det.content,"this value\n");
+    fwrite(&det,recsize,1,fp1);
+
+// test ended
+
 
 char* timestamps;
 int ret;
