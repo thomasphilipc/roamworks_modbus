@@ -46,6 +46,15 @@
 //1.1.1_2
 // added more information on the poll response
 // added device calculation when average are not read
+// fixed a bug with log being written with unwanted data
+// remove modbus register values from ignition on off power restore loss
+// stopped initializing register values on each can periodic 
+// on restart clear database and restart modbus_master as well
+//1.1.1_3
+// fixed a bug, caused by wrong type declaration 
+//1.2.0_0
+// work on creating a buffer to hold the messages
+
 
 
 
@@ -58,6 +67,8 @@
 //used of modbus master
 #include "database.h"
 #include "generic_info.h"
+//#include "Queue.h"
+
 
 // new DB to store failed messages
 #include "mysql/mysql.h"
@@ -78,13 +89,19 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <arpa/inet.h> 
+#include <sys/types.h>
+#include <sys/ipc.h> 
+#include <sys/msg.h>
 
-#define script_ver "1.1.1_2"
+// for creating dummy values and can be removed
+#include <time.h>
+#include <stdlib.h>
+#include <assert.h>
 
-typedef struct message
-{
-    char content[500];
-}record;
+
+
+#define script_ver "1.1.1_3"
+
 
 
 // below int set to 1 will exit out the application
@@ -186,6 +203,18 @@ void ready_device();
 void force_gps_update(void);
 void force_gps_update_thread(void);
 
+void rand_str(char *dest, size_t length) {
+    char charset[] = "0123456789"
+                     "abcdefghijklmnopqrstuvwxyz"
+                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    while (length-- > 0) {
+        size_t index = (double) rand() / RAND_MAX * (sizeof charset - 1);
+        *dest++ = charset[index];
+    }
+    *dest = '\0';
+}
+
 
 // Below function logs details that are send to it to a file called modbus_rw.log
 int logger(void *log)
@@ -214,6 +243,131 @@ int logger(void *log)
     return -1;
     
 }
+
+/////////////////////////////////////////////////////
+//    Below code are for Buffer Implementation     //
+/////////////////////////////////////////////////////
+
+
+typedef struct Node
+{
+  void *data;
+  struct Node *next;
+}node;
+
+typedef struct QueueList
+{
+    int sizeOfQueue;
+    size_t memSize;
+    node *head;
+    node *tail;
+}Queue;
+
+struct msg {
+   int number;
+   char record[50];
+};
+
+struct msg this_msg;
+Queue q;
+
+void queueInit(Queue *q, size_t memSize)
+{
+   q->sizeOfQueue = 0;
+   q->memSize = memSize;
+   q->head = q->tail = NULL;
+}
+
+int enqueue(Queue *q, const void *data)
+{
+    node *newNode = (node *)malloc(sizeof(node));
+
+    if(newNode == NULL)
+    {
+        return -1;
+    }
+
+    newNode->data = malloc(q->memSize);
+
+    if(newNode->data == NULL)
+    {
+        free(newNode);
+        return -1;
+    }
+
+    newNode->next = NULL;
+
+    memcpy(newNode->data, data, q->memSize);
+
+    if(q->sizeOfQueue == 0)
+    {
+        q->head = q->tail = newNode;
+    }
+    else
+    {
+        q->tail->next = newNode;
+        q->tail = newNode;
+    }
+
+    q->sizeOfQueue++;
+    return 0;
+}
+
+void dequeue(Queue *q, void *data)
+{
+    if(q->sizeOfQueue > 0)
+    {
+        node *temp = q->head;
+        memcpy(data, temp->data, q->memSize);
+
+        if(q->sizeOfQueue > 1)
+        {
+            q->head = q->head->next;
+        }
+        else
+        {
+            q->head = NULL;
+            q->tail = NULL;
+        }
+
+        q->sizeOfQueue--;
+        free(temp->data);
+        free(temp);
+    }
+}
+
+void queuePeek(Queue *q, void *data)
+{
+    if(q->sizeOfQueue > 0)
+    {
+       node *temp = q->head;
+       memcpy(data, temp->data, q->memSize);
+    }
+}
+
+void clearQueue(Queue *q)
+{
+  node *temp;
+
+  while(q->sizeOfQueue > 0)
+  {
+      temp = q->head;
+      q->head = temp->next;
+      free(temp->data);
+      free(temp);
+      q->sizeOfQueue--;
+  }
+
+  q->head = q->tail = NULL;
+}
+
+int getQueueSize(Queue *q)
+{
+    return q->sizeOfQueue;
+}
+
+
+
 
 // timer functions that will called when a signal is fired based on the respective timer
 void MonitorIOLines()
@@ -330,10 +484,14 @@ void RestartApplication()
             ret= close(sockfd);
             sprintf (log," %d is the return for close \n",ret);
             logger(log);
+            sprintf(log,"killing modbusmaster removing database and restarting modbusmaster\n");
+            logger(log);
+            system("killall modbusmaster");
+            system("modbusmaster -P > /dev/null &");
             // system("ssmtp talk2tpc@gmail.com < /etc/modbus_rw.log");
             //printf("Email should have been sent\n");
             //system("rm /etc/modbus_rw.log");
-            sleep(5);
+            sleep(10);
 
             exit(0);
 
@@ -573,10 +731,165 @@ void read_tcp_data(void)
     }
 }
 else
+{
 sprintf(log,"TCP_data - No data connection \n");
 logger(log);
 }
+}
 
+int savebuffertofile()
+{
+
+// function to check the current buffer size
+// if buffer size has value
+// then read one by one and write to file
+// once read complete delete file
+
+    FILE *fp;
+
+    fp = fopen("/etc/modbus_rw.dat","a");
+
+    if (fp)
+    {
+
+        // read total entries in buffer
+        int total_records,i;
+        total_records=getQueueSize(&q);
+        // do a for loop
+        for (i=1; i<=total_records;i++)
+        {
+            // dequeue
+            struct msg read_msg;
+            dequeue(&q, &read_msg);
+           // delete
+            printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_msg.record);
+            // write to file
+            fprintf(fp,"%d,%s \n",read_msg.number,read_msg.record);
+
+
+        }
+
+        fclose(fp);
+        sleep(2);
+        
+        // return '0' for success
+        return 0;
+    }
+    else
+    printf("Writing to log failed\n");
+    
+
+
+    return -1;
+}
+
+int loadfrombuffertofile()
+{
+// if file exists then read one by one
+char line[1024];
+char temp[350];
+    FILE *fp;
+
+    fp = fopen("/etc/modbus_rw.dat","r");
+    int i=1;
+
+    if (fp)
+    { 
+        while (fgets(line,1024,fp))
+        {
+            //printf("%s\n",line);
+            char* pt;
+            pt = strtok(line,",");
+            int a;            
+            while (pt != NULL)
+            {
+            
+            switch (i)
+            {
+            case 1: 
+                    a = atoi(pt);
+                    // a will the msd_id
+                   
+                    break;
+            case 2:
+
+                    strcpy(temp,pt);
+                    // this will be the message content
+                    break;
+            default:    
+                    i++;
+            }
+            pt = strtok (NULL,",");
+            i++;
+            }  
+
+         //  write enqueue logic above
+        this_msg.number=a;
+    	strcpy(this_msg.record,temp);
+        enqueue(&q, &this_msg);
+                     
+                                                                                                                                              
+        }        
+        fclose(fp);    
+    }
+return 0;
+// write to buffer
+system("rm /etc/modbus_rw.dat");
+// delete thefile
+}
+
+int check_buffer()
+{
+//function to check buffer - this will be called periodically when a tcp is regained 
+// if there is a positive value then the function will call the send_buffer internally
+
+int ret=-1;
+ret=getQueueSize(&q);
+
+return ret;
+}
+
+int send_buffer()
+{
+// function to send buffer data
+// this will peek the first message
+// try to send
+// if fails then do nothing
+// if success then dequeue the sent message and then peek the message 
+// the above loop contains until there is no more messages left in queue
+
+   if (tcp_status<0)
+{
+    int ret=connect_tcp();
+
+    //sends the login message
+    ready_device();
+}
+else
+{
+    int total_records,i;
+    total_records=getQueueSize(&q);
+    // do a for loop
+    for (i=1; i<=total_records;i++)
+    {
+        struct msg peek_msg;
+        queuePeek(&q, &peek_msg);
+
+
+        ret = send(sockfd, peek_msg.record, strlen(peek_msg.record),0);
+        // check the ret abd tge size of sent data ; if the match then all data has been sent    
+
+        if (ret == (strlen(peek_msg.record)))
+        {
+            sprintf(log," Send_Buffer- success Dequeing- %s\n",peek_msg.record);
+            logger(log);
+            dequeue(&q, &peek_msg);
+        
+        }
+
+    }
+}
+}
 
 
 // function to send data over tcp
@@ -608,6 +921,17 @@ else
     }
     else
     {
+
+        // writing the failed message to buffer
+
+
+    	this_msg.number=failed_msgs;
+    	strcpy(this_msg.record,data);
+        enqueue(&q, &this_msg);
+        printf("The value %d and %s has been enqueued.\n", this_msg.number,this_msg.record);
+        printf("\n");
+        // wrote the failed message to buffer        
+
         sprintf(log," Send_TCP_DATA - failed - %s\n",data);
         logger(log);
         sprintf(log,"%d count of Message Sending failed and tcp downtime is %d\n",failed_msgs,tcp_downtime);    
@@ -642,8 +966,7 @@ int res,ret1;
 
 
 printf("entered polling section for modbus_data\n");
-REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
-REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
+
 double eng_hours=-1;
 char timestamp[26];
 
@@ -852,7 +1175,7 @@ char timestamp[26];
   
 
 
-    
+     
     //CANP 36 &(IMEI),&(Time),&(Date),&(Lat),&(Lon),&(Fix),&(Course),&(Speed),&(NavDist),&(Alt),&(Power),&(Bat),&(IN7),&(Out0),&(DOP),&(SatsUsed), &(REG0),&(REG1),&(REG2),&(REG3),&(REG4),&(REG5),&(REG6),&(REG7),&(REG8),&(REG9),&(REG10),&(REG11),&(REG12),&(REG13),&(REG14),&(REG15),& (REG16),&(REG17),&(REG18),&(REG19),&(REG20),&(REG21),&(REG22),&(REG23),&(REG24)
 
     update_info();
@@ -982,7 +1305,7 @@ void send_poll_response(void)
     printf("sending poll resp\n");
 
      // prepare the format of the powerloss message
-    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,%s,%s,%d,%d,%d,%d,%s,%d\r",imei,sendtime,date,lat,lon,fix,power,script_ver,logger_id,pwr_state,ign_state,pers_reporting_rate,pers_heartbeat_rate,pers_server_hostname,pers_server_port);
+    snprintf(poll_command, sizeof(poll_command), "$POLLR 0 %s,%s,%s,%lf,%lf,%d,,,,%d,,,,,,,,,,scriptver%s,config%s,power%d,ignition%d,reporting%d,heartbeat:%d,server:%s,port:%d\r",imei,sendtime,date,lat,lon,fix,power,script_ver,logger_id,pwr_state,ign_state,pers_reporting_rate,pers_heartbeat_rate,pers_server_hostname,pers_server_port);
 
     pthread_t thread_id = launch_thread_send_data((void*)poll_command);
     pthread_join(thread_id,NULL);
@@ -1011,7 +1334,7 @@ void send_power_up(void)
     printf("sending power up\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,1,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRUP 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,1,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
@@ -1022,12 +1345,14 @@ void send_power_up(void)
 void send_power_loss(void)
 {
     update_info();
+    REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
+    REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
     
     char pwr_command[1024];
     printf("sending power loss\n");
 
      // prepare the format of the powerloss message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,0,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRL 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,0,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
@@ -1039,10 +1364,12 @@ void send_power_restore(void)
 {
   
     update_info();
+    REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
+    REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
 
     char pwr_command[1024];
     // prepare the format of the power restore message
-    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,1,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(pwr_command, sizeof(pwr_command), "$PWRR 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,1,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     pthread_t thread_id = launch_thread_send_data((void*)pwr_command);
     pthread_join(thread_id,NULL);
@@ -1053,12 +1380,15 @@ void send_ignition_off(void)
 {
     update_info();
     
+    REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
+    REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
+
     char ign_command[1024];
 
     printf("sending ignition off\n");
 
             // prepare the format of the ignition OFF message
-    snprintf(ign_command, sizeof(ign_command), "$IN8L 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(ign_command, sizeof(ign_command), "$IN8L 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,0,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
     pthread_join(thread_id,NULL);
@@ -1070,6 +1400,8 @@ void send_ignition_on(void)
 {
 
     update_info();
+    REG0=-1,REG1=-1,REG2=-1,REG3=-1,REG4=-1,REG5=-1,REG6=-1,REG7=-1,REG8=-1,REG9=-1,REG10=-1,REG11=-1,REG12=-1,REG13=-1,REG14=-1,REG15=-1;
+    REG16=-1,REG17=-1,REG18=-1,REG19=-1,REG20=-1,REG21=-1,REG22=-1,REG23=-1,REG24=-1,REG25=-1,REG26=-1,REG27=-1,REG28=-1,REG29=-1,REG30=-1;
 
 
     char ign_command[1024];
@@ -1078,7 +1410,7 @@ void send_ignition_on(void)
     // prepare the format of the Ignition ON message
 
 
-    snprintf(ign_command, sizeof(ign_command), "$IN8H 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,1,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
+    snprintf(ign_command, sizeof(ign_command), "$IN8H 36 %s,%s,%s,%lf,%lf,%d,0,0,0,%lf,%d,0,1,,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%lf,%d,%lf,%lf,%lf\r",imei,sendtime,date,lat,lon,fix,alt,power,dop,satsused,REG0,REG1,REG2,REG3,REG4,REG5,REG6,REG7,REG8,REG9,REG10,REG11,REG12,REG13,REG14,REG15,REG16,REG17,REG18,REG19,REG20,REG21,REG22,REG23,REG24);
 
 
     pthread_t thread_id = launch_thread_send_data((void*)ign_command);
@@ -2650,6 +2982,7 @@ else
 {
 
 // testing mysql below
+/*
 MYSQL mysql;
 if(mysql_init(&mysql)==NULL) {
 printf("\nInitialization error\n");
@@ -2679,7 +3012,7 @@ FILE *fp1,*fp2;
     fseek(fp1 , 0 ,SEEK_END);
     sprintf(det.content,"this value\n");
     fwrite(&det,recsize,1,fp1);
-
+*/
 // test ended
 
 
@@ -2700,8 +3033,41 @@ double values;
     sprintf(log,"fresh install will create the config file\n");
     logger(log);
     write_per();   
-    }    
- 
+    }   
+
+printf("Testing again\n");
+srand(time(NULL));   // should only be called once
+
+
+
+queueInit(&q, sizeof(struct msg));
+int val;
+    for(val = 0; val < 25; val++)
+    {
+
+    	int r = rand();      // returns a pseudo-random integer between 0 and RAND_MAX
+    	this_msg.number=r;
+    	char str1[] = { [41] = '\1' }; // make the last character non-zero so we can test based on it later
+    	    rand_str(str1, sizeof str1 - 1);
+    	    assert(str1[41] == '\0');      // test the correct insertion of string terminator
+    	strcpy(this_msg.record,str1);
+        enqueue(&q, &this_msg);
+        printf("The value %d and %s has been enqueued.\n", this_msg.number,this_msg.record);
+        printf("\n");
+
+    }
+
+    printf("\n");
+	struct msg peek_msg;
+    queuePeek(&q, &peek_msg);
+    printf("The queue has a total of %d values and the value that is at the front of the queue is %d and text is %s\n\n",getQueueSize(&q), peek_msg.number,peek_msg.record);
+
+while(getQueueSize(&q) > 0)
+{
+struct msg read_msg;
+dequeue(&q, &read_msg);
+printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_msg.record);
+}
 
     // sleep to wait for initialisation
     sleep(30);
@@ -2735,9 +3101,10 @@ double values;
     ready_device();
 }
     else
+{
     sprintf(log,"Data connection not available\n");
     logger(log);
-    
+ }   
     
     
 
