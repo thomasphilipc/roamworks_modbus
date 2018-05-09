@@ -119,7 +119,7 @@ volatile int tcp_status=0;
 //keeps track of count of failed messages
 int failed_msgs=1;
 // the reporting rate and heartbeat rate is set as a variable to allow future usage in changing them OTA
-int reporting_rate =2;
+int reporting_rate =1;
 int heartbeat_rate=720;
 int force_update_gps_rate=5;
 // the below parameters are expected to be static and wouf not change after configuration
@@ -174,7 +174,7 @@ int pwr_filter=0; // a filter implementation via counter to check if the state i
 // below variables are for persistent data or defaults
 char *pers_server_hostname="hems.roamworks.com";
 unsigned short pers_server_port=7103; 
-int pers_reporting_rate=5;
+int pers_reporting_rate=1;
 int pers_heartbeat_rate=720;
 int pers_ign_state=-1; // initialized state
 int pers_pwr_state=-1; // to identify fresh app install
@@ -196,6 +196,7 @@ int prev_io_state=-1;
 // declaration of functions
 void update_info();
 void send_tcp_data(void *data);
+int send_tcp_data_nobuffer(void *data);
 void send_poll_response();
 void send_heartbeat();
 void filterString(char *s,const char *toremove);
@@ -265,7 +266,7 @@ typedef struct QueueList
 
 struct msg {
    int number;
-   char record[50];
+   char record[300];
 };
 
 struct msg this_msg;
@@ -397,13 +398,13 @@ int ret;
     {
         if(pwr_state==-1)
         {
-        //confirm power rest and send message  
+        //confirm power on and send message  
         pwr_state=1;
         do_function=1;
         }
         else if(pwr_state==0)
         {
-        //confirm power rest and send message  
+        //confirm power restore and send message  
         pwr_state=1;
         hodor=3;
         }
@@ -515,6 +516,24 @@ pthread_t tid;
 
 }
 
+// function to launch the send tcp in a thread
+pthread_t launch_thread_send_data_nobuffer(void *data)
+{
+
+pthread_t tid;
+    //printf("Calling a thread to send data as %s",data);
+    ret = pthread_create(&tid, NULL, send_tcp_data_nobuffer, (void *)data);
+    if (ret != 0) 
+    { 
+        sprintf(log," ThreadLaunchData - Error from pthread no buffer: %d\n", ret); 
+        logger(log);
+    }
+
+    return tid;
+
+}
+
+
 
 // function to identify and handle events raised by the timer signals
 static void timerHandler( int sig, siginfo_t *si, void *uc )
@@ -587,7 +606,7 @@ static int srtSchedule( void )
 
     rc2 = makeTimer("Second Timer", &secondTimerID, 30, 30);   // defined to read tcp for new data every 30 seconds
 
-    rc3 = makeTimer("Third Timer", &thirdTimerID, 1800, 0);    // restart application every thirty minutes
+    rc3 = makeTimer("Third Timer", &thirdTimerID, 7200, 0);    // restart application every 2 hours
 
     rc4 = makeTimer("Fourth Timer", &fourthTimerID, 55, 55);   // force GPS update
 
@@ -693,8 +712,6 @@ void tick_handler( int sig )
 // function to read data over tcp
 void read_tcp_data(void)
 {
-    if (tcp_status>0)
-{
 
     int nread;    
     bzero(read_buff,1024);
@@ -729,12 +746,7 @@ void read_tcp_data(void)
 
         bzero(read_buff,1024);
     }
-}
-else
-{
-sprintf(log,"TCP_data - No data connection \n");
-logger(log);
-}
+
 }
 
 int savebuffertofile()
@@ -743,8 +755,8 @@ int savebuffertofile()
 // function to check the current buffer size
 // if buffer size has value
 // then read one by one and write to file
-// once read complete delete file
-
+// once read complete delete file 
+        system("rm /etc/modbus_rw.dat");
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.dat","a");
@@ -788,6 +800,7 @@ int loadfrombuffertofile()
 // if file exists then read one by one
 char line[1024];
 char temp[350];
+
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.dat","r");
@@ -807,14 +820,10 @@ char temp[350];
             switch (i)
             {
             case 1: 
-                    a = atoi(pt);
-                    // a will the msd_id
-                   
+                    a = atoi(pt);                
                     break;
             case 2:
-
                     strcpy(temp,pt);
-                    // this will be the message content
                     break;
             default:    
                     i++;
@@ -823,22 +832,25 @@ char temp[350];
             i++;
             }  
 
-         //  write enqueue logic above
         this_msg.number=a;
     	strcpy(this_msg.record,temp);
         enqueue(&q, &this_msg);
                      
                                                                                                                                               
         }        
-        fclose(fp);    
+        fclose(fp);   
+        return 0; 
+        system("rm /etc/modbus_rw.dat");
     }
-return 0;
-// write to buffer
-system("rm /etc/modbus_rw.dat");
-// delete thefile
+else
+    {
+        printf("no buffer file\n");
+        return -1;
+    }
 }
 
-int check_buffer()
+
+void process_buffer_thread()
 {
 //function to check buffer - this will be called periodically when a tcp is regained 
 // if there is a positive value then the function will call the send_buffer internally
@@ -846,8 +858,28 @@ int check_buffer()
 int ret=-1;
 ret=getQueueSize(&q);
 
-return ret;
+if (ret>0)
+{
+printf("Buffer messages need to be send \n");
+ret = send_buffer();
 }
+
+if (ret==1)
+{
+printf(" All buffer messages sent\n");
+}
+}
+
+void process_buffer()
+{
+   pthread_t tid;
+    //printf("Calling a thread to send data as %s",data);
+    ret = pthread_create(&tid, NULL, process_buffer_thread, NULL);
+    if (ret != 0) 
+        printf("Error from pthread: %d\n", ret); 
+
+}
+
 
 int send_buffer()
 {
@@ -858,39 +890,75 @@ int send_buffer()
 // if success then dequeue the sent message and then peek the message 
 // the above loop contains until there is no more messages left in queue
 
-   if (tcp_status<0)
-{
-    int ret=connect_tcp();
-
-    //sends the login message
-    ready_device();
-}
-else
-{
-    int total_records,i;
+    int total_records,i,status;
     total_records=getQueueSize(&q);
+    status= total_records;
     // do a for loop
     for (i=1; i<=total_records;i++)
     {
         struct msg peek_msg;
         queuePeek(&q, &peek_msg);
 
+        status=send_tcp_data_nobuffer(peek_msg.record);
 
-        ret = send(sockfd, peek_msg.record, strlen(peek_msg.record),0);
+        //ret = send(sockfd, peek_msg.record, strlen(peek_msg.record),0);
         // check the ret abd tge size of sent data ; if the match then all data has been sent    
 
-        if (ret == (strlen(peek_msg.record)))
+        if (status==1)
         {
             sprintf(log," Send_Buffer- success Dequeing- %s\n",peek_msg.record);
             logger(log);
             dequeue(&q, &peek_msg);
-        
         }
+        else
+        {
+        status = -1;
+        break;
+        }
+    }
+return status;
+}
 
+// function to send data over tcp without buffering
+int send_tcp_data_nobuffer(void *data)
+{   
+    if (tcp_status<0)
+{
+   // int ret=connect_tcp();
+   printf(" I have no data connection \n ");
+   return 0;
+}
+else
+{
+
+
+    //printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
+    // call remove substring to remove -1 and -1.0000 which indicates values not avaialable
+    filterString(data,"-1.000000");    
+    filterString(data,"-1"); 
+    //printf("data being send is %s of length %d \n\n",data,strlen(data));
+    ret = send(sockfd, data, strlen(data),0);
+    // check the ret abd tge size of sent data ; if the match then all data has been sent    
+
+    if (ret == (strlen(data)))
+    {
+        sprintf(log," Send_Buffer_Data - success - %s\n",data);
+        logger(log);
+        return 1;
+        
+    }
+    else
+    {
+
+        sprintf(log," Send_Buffer_Data - failed - %s\n",data);
+        logger(log);
+        ret = shutdown(sockfd, SHUT_WR);
+        ret= close(sockfd);  
+        tcp_status=-1;
+        return 0;
     }
 }
 }
-
 
 // function to send data over tcp
 void send_tcp_data(void *data)
@@ -898,12 +966,8 @@ void send_tcp_data(void *data)
     if (tcp_status<0)
 {
     int ret=connect_tcp();
-
-    //sends the login message
-    ready_device();
 }
-else
-{
+
 
     //printf("data before removing 0 is %s of length %d \n\n",data,strlen(data));
     // call remove substring to remove -1 and -1.0000 which indicates values not avaialable
@@ -917,6 +981,7 @@ else
     {
         sprintf(log," Send_TCP_DATA - success - %s\n",data);
         logger(log);
+        process_buffer();
         
     }
     else
@@ -930,18 +995,18 @@ else
         enqueue(&q, &this_msg);
         printf("The value %d and %s has been enqueued.\n", this_msg.number,this_msg.record);
         printf("\n");
-        // wrote the failed message to buffer        
-
+        // wrote the failed message to buffer and writing to file        
+        //savebuffertofile();
         sprintf(log," Send_TCP_DATA - failed - %s\n",data);
         logger(log);
         sprintf(log,"%d count of Message Sending failed and tcp downtime is %d\n",failed_msgs,tcp_downtime);    
         logger(log);
-        failed_msgs++;  
+        failed_msgs=failed_msgs+1;  
         ret = shutdown(sockfd, SHUT_WR);
         ret= close(sockfd);  
         tcp_status=-1;
     }
-}
+
 }
 
 // function to remove Not Available values
@@ -1236,8 +1301,6 @@ int ignstate;
 // function to update the basic information time and gps info
 void update_info(void)
 {
-
-
     int ret;
 
     // power and ignition state   
@@ -1321,7 +1384,7 @@ void send_ping(void)
      // prepare the ping
     snprintf(ping_command, sizeof(ping_command), "ping\r");
 
-    pthread_t thread_id = launch_thread_send_data((void*)ping_command);
+    pthread_t thread_id = launch_thread_send_data_nobuffer((void*)ping_command);
     pthread_join(thread_id,NULL);
 }
 
@@ -1434,6 +1497,7 @@ void send_heartbeat(void)
 // function to send the sign on 
 void ready_device(void)
 {
+    printf("reached ready device\n");
         //get the loggerid - this will be from the CSV file uploaded to master_modbus
     ret = get_loggerid(logger_id); 
     //obtain imei number
@@ -1449,7 +1513,7 @@ void ready_device(void)
     datatosend[strlen(datatosend)] = '\0';
     printf("%s",datatosend);
 
-    pthread_t thread_id = launch_thread_send_data((void*)datatosend);
+    pthread_t thread_id = launch_thread_send_data_nobuffer((void*)datatosend);
     pthread_join(thread_id,NULL);
  
 }
@@ -1458,48 +1522,16 @@ void ready_device(void)
 // function to check tcp status
 int check_tcp_status(void)
 {
-int ret;
-int error = 0;
-socklen_t len = sizeof (error);
-int retval = getsockopt (sockfd, SOL_SOCKET, SO_ERROR, &error, &len);
 
-if (retval != 0) 
-{
-    /* there was a problem getting the error code */
-    fprintf(stderr, "error getting socket error code: %s\n", strerror(retval));
-    return -1;
-}
-
-if (error != 0) {
-    /* socket has a non zero error status */
-    fprintf(stderr, "socket error: %s\n", strerror(error));
-     return -1;
-}
-
-
-
-char value[20];
-
-ret=get_cellular_ip(value, 20);
-if (ret>=0)
-{
-    printf("Cell Ip is %s \n",value);
-
-    char *hostname;
-    struct hostent *hostinfo;
-
-    hostname = "qaroam3.roamworks.com";
-    hostinfo = gethostbyname (hostname);
-
-    if (hostinfo == NULL)
-        printf("Internet Connection Exists !\n");
-    else
-        printf("No Internet Connection !\n");
-
-    return 0; 
-}
+ if (tcp_status<1)
+    {
+    int ret;
+    ret=connect_tcp();
+    return ret;
+    }
 else
-    return -1; 
+    return 1;
+
 }
 
 
@@ -1509,7 +1541,8 @@ else
 int connect_tcp(void)
 {
 
-    /* Get socket. */
+    printf("In connect TCP \n");   
+     /* Get socket. */
     // sets the protocol to TCP
     protoent = getprotobyname(protoname);
     
@@ -1526,9 +1559,10 @@ int connect_tcp(void)
         return -1;
         exit(EXIT_FAILURE);
     }
-    else
-    sprintf (log,"Connect_TCP : sock id is %d \n ",sockfd);
-    logger(log);
+  //  else
+
+  //  sprintf (log,"Connect_TCP : sock id is %d \n ",sockfd);
+  //  logger(log);
 
     read_per();
     server_hostname=pers_server_hostname;
@@ -1572,19 +1606,30 @@ int connect_tcp(void)
         /* Do the actual connection. */
     if (connect(sockfd, (struct sockaddr*)&sockaddr_in, sizeof(sockaddr_in)) == -1) 
     {
-         sprintf (log,"TCP  connection failed closing socket\n");
-         logger(log);
-         ret = shutdown(sockfd, SHUT_WR);
-         //printf (" %d is the return for shutdown \n",ret);
-         ret= close(sockfd);
-        // printf (" %d is the return for close \n",ret);
-         tcp_status=-1;
+        if (tcp_status == 1)
+         
+        {
+            sprintf (log,"TCP  connection failed closing socket\n");
+            logger(log);
+            ret = shutdown(sockfd, SHUT_WR);
+            //printf (" %d is the return for shutdown \n",ret);
+            ret= close(sockfd);
+            // printf (" %d is the return for close \n",ret);
+            tcp_status=-1;
+        }
+        
     }
     else
+    {
         tcp_status=1;
+        //sends the login message
+        printf("In connect tcp - ready device going to be called next\n");
+        ready_device();
         tcp_downtime=0;
     }
-    hodor=0;
+    }
+
+
     return tcp_status;
 }
 
@@ -1740,7 +1785,7 @@ int read_per()
                     break;
             case 3: 
                     a = atoi(pt);
-                    failed_msgs=a;
+                    //failed_msgs=a;
                     break;
             case 4:
                     a = atoi(pt);
@@ -2194,7 +2239,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
 
 
     ret = read_tag_latest_data_from_db("Alm0","DSEPANEL",5,1,&ALM0,timestamp); 
-    printf("Alarm Value 1: %lf\n",ALM0);  
+    //printf("Alarm Value 1: %lf\n",ALM0);  
     recievedint= (int)ALM0;
     if (ret==0)
     {
@@ -2238,7 +2283,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm1","DSEPANEL",5,1,&ALM1,timestamp); 
-    printf("Alarm Value 2: %lf\n",ALM1);  
+    //printf("Alarm Value 2: %lf\n",ALM1);  
     recievedint= (int)ALM1;
     if (ret==0)
     {
@@ -2280,7 +2325,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm2","DSEPANEL",5,1,&ALM2,timestamp); 
-        printf("Alarm Value 3: %lf\n",ALM2);  
+        //printf("Alarm Value 3: %lf\n",ALM2);  
     recievedint= (int)ALM2;
     if (ret==0)
     {
@@ -2322,7 +2367,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm3","DSEPANEL",5,1,&ALM3,timestamp); 
-       printf("Alarm Value 4: %lf\n",ALM3);  
+       //printf("Alarm Value 4: %lf\n",ALM3);  
     recievedint= (int)ALM3;
     if (ret==0)
     {
@@ -2364,7 +2409,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm4","DSEPANEL",5,1,&ALM4,timestamp); 
-        printf("Alarm Value 5: %lf\n",ALM4);  
+       // printf("Alarm Value 5: %lf\n",ALM4);  
     recievedint= (int)ALM4;
     if (ret==0)
     {
@@ -2406,7 +2451,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
     
     ret = read_tag_latest_data_from_db("Alm5","DSEPANEL",5,1,&ALM5,timestamp); 
-       printf("Alarm Value 6: %lf\n",ALM5);  
+      // printf("Alarm Value 6: %lf\n",ALM5);  
     recievedint= (int)ALM5;
     if (ret==0)
     {
@@ -2449,7 +2494,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     
 
     ret = read_tag_latest_data_from_db("Alm6","DSEPANEL",5,1,&ALM6,timestamp); 
-        printf("Alarm Value 7: %lf\n",ALM6);  
+      //  printf("Alarm Value 7: %lf\n",ALM6);  
     recievedint= (int)ALM6;
     if (ret==0)
     {
@@ -2492,7 +2537,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     
 
     ret = read_tag_latest_data_from_db("Alm7","DSEPANEL",5,1,&ALM7,timestamp); 
-        printf("Alarm Value 8: %lf\n",ALM7);  
+     //   printf("Alarm Value 8: %lf\n",ALM7);  
     recievedint= (int)ALM7;
     if (ret==0)
     {
@@ -2535,7 +2580,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     
 
     ret = read_tag_latest_data_from_db("Alm8","DSEPANEL",5,1,&ALM8,timestamp); 
-       printf("Alarm Value 9: %lf\n",ALM8);  
+     //  printf("Alarm Value 9: %lf\n",ALM8);  
     recievedint= (int)ALM8;
     if (ret==0)
     {
@@ -2577,7 +2622,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm9","DSEPANEL",5,1,&ALM9,timestamp); 
-        printf("Alarm Value 10: %lf\n",ALM9);  
+    //    printf("Alarm Value 10: %lf\n",ALM9);  
     recievedint= (int)ALM9;
     if (ret==0)
     {
@@ -2619,7 +2664,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm10","DSEPANEL",5,1,&ALM10,timestamp); 
-        printf("Alarm Value 11: %lf\n",ALM10);  
+     //   printf("Alarm Value 11: %lf\n",ALM10);  
     recievedint= (int)ALM10;
     if (ret==0)
     {
@@ -2661,7 +2706,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm11","DSEPANEL",5,1,&ALM11,timestamp);  
-        printf("Alarm Value 12: %lf\n",ALM11);  
+     //   printf("Alarm Value 12: %lf\n",ALM11);  
     recievedint= (int)ALM1;
     if (ret==0)
     {
@@ -2702,7 +2747,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
         }
     } 
     ret = read_tag_latest_data_from_db("Alm12","DSEPANEL",5,1,&ALM12,timestamp);  
-        printf("Alarm Value 13: %lf\n",ALM12);  
+    //    printf("Alarm Value 13: %lf\n",ALM12);  
     recievedint= (int)ALM12;
     if (ret==0)
     {
@@ -2744,7 +2789,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm13","DSEPANEL",5,1,&ALM13,timestamp); 
-        printf("Alarm Value 14: %lf\n",ALM13);  
+     //   printf("Alarm Value 14: %lf\n",ALM13);  
     recievedint= (int)ALM13;
     if (ret==0)
     {
@@ -2786,7 +2831,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     read_tag_latest_data_from_db("Alm14","DSEPANEL",5,1,&ALM14,timestamp); 
-        printf("Alarm Value 15: %lf\n",ALM14);  
+     //   printf("Alarm Value 15: %lf\n",ALM14);  
     recievedint= (int)ALM14;
     if (ret==0)
     {
@@ -2828,7 +2873,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
 
     ret = read_tag_latest_data_from_db("Alm15","DSEPANEL",5,1,&ALM15,timestamp); 
-        printf("Alarm Value 16: %lf\n",ALM15);  
+     //   printf("Alarm Value 16: %lf\n",ALM15);  
     recievedint= (int)ALM15;
     if (ret==0)
     {
@@ -2870,7 +2915,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
     } 
     
     ret = read_tag_latest_data_from_db("Alm16","DSEPANEL",5,1,&ALM16,timestamp); 
-        printf("Alarm Value 17: %lf\n",ALM16);  
+     //   printf("Alarm Value 17: %lf\n",ALM16);  
     recievedint= (int)ALM16;
     if (ret==0)
     {
@@ -2913,7 +2958,7 @@ int a41,a42,a43,a44,a45,a46,a47,a48,a49,a50,a51,a52,a53,a54,a55,a56,a57,a58,a59,
 
 
     ret = read_tag_latest_data_from_db("Alm17","DSEPANEL",5,1,&ALM17,timestamp);  
-       printf("Alarm Value 18: %lf\n",ALM17);  
+     //  printf("Alarm Value 18: %lf\n",ALM17);  
     recievedint= (int)ALM17;
     if (ret==0)
     {
@@ -3019,7 +3064,7 @@ FILE *fp1,*fp2;
 char* timestamps;
 int ret;
 double values;
-     sleep(10);   
+     sleep(5);   
 
     sprintf(log,"Modbus_RW started - Initialization in process \n"); 
     logger(log);  
@@ -3035,12 +3080,18 @@ double values;
     write_per();   
     }   
 
-printf("Testing again\n");
-srand(time(NULL));   // should only be called once
-
-
-
 queueInit(&q, sizeof(struct msg));
+
+loadfrombuffertofile();
+
+sleep(5);
+//printf("Testing again\n");
+//srand(time(NULL));   // should only be called once
+
+
+
+
+/*
 int val;
     for(val = 0; val < 25; val++)
     {
@@ -3068,9 +3119,10 @@ struct msg read_msg;
 dequeue(&q, &read_msg);
 printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_msg.record);
 }
+*/
 
     // sleep to wait for initialisation
-    sleep(30);
+    sleep(10);
 
     
     //get the loggerid - this will be from the CSV file uploaded to master_modbus
@@ -3092,13 +3144,13 @@ printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_
 
     sprintf (log,"The script version %s is now running for device with imei=%s and the modbus configfile is %s and should report to the server\n", script_ver, imei, logger_id);
     logger(log);
-    tcp_status=connect_tcp();   
+    tcp_status=check_tcp_status();   
     if (tcp_status>0)
 {
     sprintf(log,"Data connection present\n");
     logger(log);
-        //sends the login message
-    ready_device();
+    process_buffer();
+
 }
     else
 {
@@ -3213,6 +3265,8 @@ printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_
     case 9:
            // sprintf(log,"checking for incoming messages\n");
             //logger(log);
+            tcp_status=check_tcp_status();
+            if (tcp_status>0)
             read_tcp_data();
             do_function=0;
             break;
@@ -3256,6 +3310,7 @@ printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_
     write_per();
     ret = shutdown(sockfd, SHUT_WR);
     ret= close(sockfd);
+    savebuffertofile();
     sprintf(log,"modbus_rw terminated\n");
     logger(log);
 
