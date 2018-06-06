@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 PKG_NAME:=modbus_rw
 PKG_RELEASE:=0
-PKG_VERSION:=1.1
+PKG_VERSION:=1.2
 
 include $(INCLUDE_DIR)/package.mk
 

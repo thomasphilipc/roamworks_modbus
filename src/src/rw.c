@@ -3,7 +3,7 @@
 //                                     //
 //  ROAMWORKS MODBUS - MAESTRO Eseries //
 //  application name : modbus_rw       //
-//  application version: 1.1.0         //
+//  application version: 1.2.0         //
 //  updated last 20/03/18 : 16:10 PM   //
 //  thomas.philip@roamworks.com        //
 //                                     //
@@ -54,6 +54,9 @@
 // fixed a bug, caused by wrong type declaration 
 //1.2.0_0
 // work on creating a buffer to hold the messages
+//1.2.0_1
+//implemented buffer and new send function to clear buffer
+//new function to check internet on a as needed basis
 
 
 
@@ -67,6 +70,7 @@
 //used of modbus master
 #include "database.h"
 #include "generic_info.h"
+
 //#include "Queue.h"
 
 
@@ -93,14 +97,10 @@
 #include <sys/ipc.h> 
 #include <sys/msg.h>
 
-// for creating dummy values and can be removed
-#include <time.h>
-#include <stdlib.h>
-#include <assert.h>
 
+#include <curl/curl.h>
 
-
-#define script_ver "1.1.1_3"
+#define script_ver "1.2.0_1"
 
 
 
@@ -150,6 +150,9 @@ int ret = -1, i, res,ret1;
 char timestamp[26];
 // below flag is to handle tranistion changes
 int hodor=1;
+
+// force manual calcualtion of Averages
+int avg_manual=1;
 
 
 char protoname[] = "tcp";
@@ -756,7 +759,7 @@ int savebuffertofile()
 // if buffer size has value
 // then read one by one and write to file
 // once read complete delete file 
-        system("rm /etc/modbus_rw.dat");
+    system("rm /etc/modbus_rw.dat");
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.dat","a");
@@ -776,14 +779,14 @@ int savebuffertofile()
            // delete
             printf("dequeued from the queue is %d and text is %s\n\n",read_msg.number, read_msg.record);
             // write to file
-            fprintf(fp,"%d,%s \n",read_msg.number,read_msg.record);
+            fprintf(fp,"%s\n",read_msg.record);
 
 
         }
 
         fclose(fp);
         sleep(2);
-        
+        loadfromfiletobuffer();
         // return '0' for success
         return 0;
     }
@@ -795,47 +798,33 @@ int savebuffertofile()
     return -1;
 }
 
-int loadfrombuffertofile()
+int loadfromfiletobuffer()
 {
 // if file exists then read one by one
 char line[1024];
-char temp[350];
+
 
     FILE *fp;
 
     fp = fopen("/etc/modbus_rw.dat","r");
     int i=1;
+    struct msg this_msg;
 
     if (fp)
     { 
         while (fgets(line,1024,fp))
         {
-            //printf("%s\n",line);
-            char* pt;
-            pt = strtok(line,",");
-            int a;            
-            while (pt != NULL)
-            {
             
-            switch (i)
+            if (strlen(line)>5)
             {
-            case 1: 
-                    a = atoi(pt);                
-                    break;
-            case 2:
-                    strcpy(temp,pt);
-                    break;
-            default:    
-                    i++;
-            }
-            pt = strtok (NULL,",");
+            printf( " %d is the length of the read line \n",strlen(line));
+            printf("%s is the %d line read from file to buffer\n",line,i);
+            this_msg.number=i;
+    	    strcpy(this_msg.record,line);
+            printf("enqueued  %d and text is %s\n\n",this_msg.number,this_msg.record);
+            enqueue(&q, &this_msg);
             i++;
-            }  
-
-        this_msg.number=a;
-    	strcpy(this_msg.record,temp);
-        enqueue(&q, &this_msg);
-                     
+            }         
                                                                                                                                               
         }        
         fclose(fp);   
@@ -866,7 +855,9 @@ ret = send_buffer();
 
 if (ret==1)
 {
-printf(" All buffer messages sent\n");
+printf(" All buffer messages sent and file removed\n");
+   system("rm /etc/modbus_rw.dat");
+
 }
 }
 
@@ -995,8 +986,8 @@ void send_tcp_data(void *data)
         enqueue(&q, &this_msg);
         printf("The value %d and %s has been enqueued.\n", this_msg.number,this_msg.record);
         printf("\n");
-        // wrote the failed message to buffer and writing to file        
-        //savebuffertofile();
+        //wrote the failed message to buffer and writing to file        
+        savebuffertofile();
         sprintf(log," Send_TCP_DATA - failed - %s\n",data);
         logger(log);
         sprintf(log,"%d count of Message Sending failed and tcp downtime is %d\n",failed_msgs,tcp_downtime);    
@@ -1221,19 +1212,19 @@ char timestamp[26];
    
 // device side calculation for evaluating average values if the panel/modbus master is not providing
 //avg line to line   
- if (REG4==-1)
+ if (REG4==-1 || avg_manual)
 {
-        REG4=((REG7+REG11+REG15)/3);
+        REG4=((REG7+REG11+REG15)/3.000);
 }
 //avg line to neutral
-    if (REG5==-1)
+    if (REG5==-1 || avg_manual)
 {
-        REG5=((REG8+REG12+REG16)/3);
+        REG5=((REG8+REG12+REG16)/3.000);
 }
 //avg current
-    if (REG6==-1)
+    if (REG6==-1|| avg_manual)
 {
-        REG6=((REG9+REG13+REG17)/3);
+        REG6=((REG9+REG13+REG17)/3.000);
 }
 
 
@@ -1381,6 +1372,8 @@ void send_ping(void)
     char ping_command[1024];
     printf("sending ping-keep alive\n");
 
+
+
      // prepare the ping
     snprintf(ping_command, sizeof(ping_command), "ping\r");
 
@@ -1523,6 +1516,7 @@ void ready_device(void)
 int check_tcp_status(void)
 {
 
+
  if (tcp_status<1)
     {
     int ret;
@@ -1535,6 +1529,38 @@ else
 }
 
 
+int check_network(void)
+{
+/*
+CURL *curl;
+  CURLcode res;
+   printf("reached check network \n");
+  curl = curl_easy_init();
+  if(curl) {
+    curl_easy_setopt(curl, CURLOPT_URL, "www.google.com");
+  res = curl_easy_perform(curl)
+    switch (res)
+    {
+        case CURLE_COULDNT_CONNECT:
+        case CURLE_COULDNT_RESOLVE_HOST:
+        case CURLE_COULDNT_RESOLVE_PROXY:
+             printf("Internet dose not exist\n");
+            return (-1);
+            break;
+        case CURLE_OK:
+            printf("Internet exist\n");
+            return 1;
+
+        default:
+            printf("Request failed\n");
+    } 
+
+
+    curl_easy_cleanup(curl);
+}
+*/
+
+}
 
 
 // function to establist tcp connection
@@ -1629,7 +1655,7 @@ int connect_tcp(void)
     }
     }
 
-
+    hodor=0;
     return tcp_status;
 }
 
@@ -3012,6 +3038,7 @@ int main (int argc, char *argv[])
 if((argc>1) && atoi(argv[1]) == 0)
 {
 printf(" test functionality \n");
+check_network();
 }
 else if( (argc>1) && atoi(argv[1]) == 1)
 {
@@ -3082,7 +3109,7 @@ double values;
 
 queueInit(&q, sizeof(struct msg));
 
-loadfrombuffertofile();
+loadfromfiletobuffer();
 
 sleep(5);
 //printf("Testing again\n");
